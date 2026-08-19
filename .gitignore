@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Temporary files
+*.wav
+temp_audio.wav
+
+# IDE
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local/private data
+data/memory/
+
+# Face dataset
+data/faces/
+
+# Large/local ML models
+data/models/
+
+# Environment/secrets
+.env
