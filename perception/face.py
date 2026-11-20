@@ -2,7 +2,7 @@ import cv2
 from intelligence.recognize import recognize_face
 
 face_cascade = cv2.CascadeClassifier(
-    cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+    "/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml"
 )
 
 def detect_faces(frame):

@@ -30,3 +30,15 @@ data/models/
 
 # Environment/secrets
 .env
+# Private face-recognition data
+data/trained_model.yml
+data/enrolment_runs/
+data/face_validation/
+
+# Camera and face diagnostic images
+face_test.jpg
+face-diagnostic-*.jpg
+recognition_*.jpg
+
+# Local code backups
+*.py.backup
