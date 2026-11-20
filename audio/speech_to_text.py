@@ -48,7 +48,8 @@ def record_audio(filename="temp_audio.wav"):
     return filename
 
 
-def transcribe(filename="temp_audio.wav"):
+def transcribe(filename="temp_audio.wav", timeout=None):
+    """Run whisper.cpp; ``timeout`` (seconds) raises subprocess.TimeoutExpired."""
     result = subprocess.run(
         [
             str(WHISPER_CLI),
@@ -61,6 +62,7 @@ def transcribe(filename="temp_audio.wav"):
         capture_output=True,
         text=True,
         check=True,
+        timeout=timeout,
     )
 
     return result.stdout.strip()

@@ -1,7 +1,6 @@
 """Eli application; use --headless --vision-only for Raspberry Pi SSH."""
 import argparse
 import time
-import threading
 
 import cv2
 
@@ -12,7 +11,8 @@ from behavior.state_machine import RobotStateMachine, State
 from hardware.mock_hardware import MockMotors
 
 EMOTION_CHECK_INTERVAL = 1.0
-CONVERSATION_COOLDOWN = 8.0
+# Consecutive frames with the same known identity before a session is locked.
+IDENTITY_CONFIRM_FRAMES = 3
 
 
 def load_vision():
@@ -30,8 +30,8 @@ def load_emotion():
 
 
 def load_conversation():
-    from intelligence.conversation import conversation_turn
-    return conversation_turn
+    from intelligence.conversation import run_session
+    return run_session
 
 
 def recognize_frame(frame, cascade, recognize):
@@ -60,9 +60,9 @@ def main(argv=None):
     last_seen_person = None
     last_reported_person = None
     last_emotion_check = 0
-    last_conversation_time = 0
     current_emotion = None
-    conversation_active = threading.Event()
+    candidate, candidate_frames = None, 0
+    locked_person = locked_info = None
     emotion = conversation = None
     status = 0
 
@@ -116,11 +116,27 @@ def main(argv=None):
             snapshot = fuse(person_name=person_name, emotion=current_emotion)
 
             known = bool(person_name and person_name != 'Unknown')
-            if known and person_name not in greeted:
+            if conversation:
+                # Session mode: lock the first identity seen on consecutive frames.
+                if known and person_name == candidate:
+                    candidate_frames += 1
+                else:
+                    candidate, candidate_frames = (person_name, 1) if known else (None, 0)
+                if candidate_frames >= IDENTITY_CONFIRM_FRAMES:
+                    locked_person = person_name
+                    print(f'Hello, {locked_person}!', flush=True)
+                    try:
+                        remember_encounter(locked_person)
+                        locked_info = get_person_info(locked_person)
+                        print(f"[Memory] {locked_person} - visit #{locked_info['visit_count']}", flush=True)
+                    except Exception as exc:
+                        print(f'[Memory] {exc}', flush=True)
+                    break
+            elif known and person_name not in greeted:
                 # Record before side effects: failures must not repeat greetings.
                 greeted.add(person_name)
                 print(f'Hello, {person_name}!', flush=True)
-            if known and person_name != last_seen_person:
+            if not conversation and known and person_name != last_seen_person:
                 last_seen_person = person_name
                 try:
                     remember_encounter(person_name)
@@ -128,26 +144,6 @@ def main(argv=None):
                     print(f"[Memory] {person_name} - visit #{info['visit_count']}")
                 except Exception as exc:
                     print(f'[Memory] {exc}', flush=True)
-
-            if (known and conversation and fsm.current_state() == State.IDLE
-                    and not conversation_active.is_set()
-                    and now - last_conversation_time >= CONVERSATION_COOLDOWN):
-                last_conversation_time = now
-                conversation_active.set()
-
-                def run_and_release():
-                    try:
-                        conversation(fsm)
-                    except Exception as exc:
-                        print(f'[Conversation] {exc}', flush=True)
-                    finally:
-                        try:
-                            motors.stop()
-                        finally:
-                            fsm.transition_to(State.IDLE)
-                            conversation_active.clear()
-
-                threading.Thread(target=run_and_release, daemon=True).start()
 
             if not args.headless:
                 if box is not None:
@@ -161,6 +157,18 @@ def main(argv=None):
                 cv2.imshow('Eli', frame)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     break
+        if locked_person:
+            # Vision is finished for this session: free the camera (and CPU).
+            camera.release()
+            if not args.headless:
+                close_windows()
+            print(f'[Session] Identity locked: {locked_person}. Face recognition paused.', flush=True)
+            try:
+                status = conversation(locked_person, fsm, emotion=current_emotion,
+                                      visit_count=(locked_info or {}).get('visit_count'))
+            except Exception as exc:
+                print(f'[Conversation] {exc}', flush=True)
+                status = 1
     except KeyboardInterrupt:
         print('Eli stopped.', flush=True)
     except (RuntimeError, OSError, cv2.error) as exc:
@@ -170,11 +178,15 @@ def main(argv=None):
         camera.release()
         motors.stop()
         if not args.headless:
-            try:
-                cv2.destroyAllWindows()
-            except cv2.error:
-                pass
+            close_windows()
     return status
+
+
+def close_windows():
+    try:
+        cv2.destroyAllWindows()
+    except cv2.error:
+        pass
 
 
 if __name__ == '__main__':
