@@ -4,6 +4,7 @@ Every HTTP call goes through a fake ``opener``; no Ollama server, microphone,
 speaker, webcam or Raspberry Pi is needed.
 """
 import contextlib
+import importlib
 import io
 import json
 import socket
@@ -18,27 +19,27 @@ from unittest.mock import Mock, patch
 from intelligence import ollama_client as oc
 from intelligence import personality
 
-# Import conversation's real dependencies BEFORE patching sys.modules.
-# patch.dict restores sys.modules on exit and drops every module first imported
-# inside the block; if behavior.state_machine were first imported there, later
-# imports would create a second State enum class and identity checks such as
-# fsm.transition_to(State.IDLE) in other test modules would fail.
-import audio.text_to_speech  # noqa: F401,E402
-import behavior.state_machine  # noqa: F401,E402
-import intelligence  # noqa: E402
-
 # Same audio stub as test_conversation_session: no sounddevice/whisper needed.
 _stt = types.ModuleType("audio.speech_to_text")
 _stt.record_audio = Mock(name="record_audio")
 _stt.transcribe = Mock(name="transcribe")
-with patch.dict(sys.modules, {"audio.speech_to_text": _stt}):
+# Import a fresh intelligence.conversation with only audio.speech_to_text stubbed.
+# Swap just that one sys.modules entry and restore it afterwards: patch.dict
+# would also drop every module first imported during this import (state
+# machine, Ollama client, ...), so later imports would create duplicate classes
+# (State, OllamaUnavailable) and break identity checks in other test modules.
+# importlib.import_module ignores stale `intelligence.conversation` attributes.
+_saved_stt = sys.modules.get("audio.speech_to_text")
+sys.modules["audio.speech_to_text"] = _stt
+try:
     sys.modules.pop("intelligence.conversation", None)
-    from intelligence import conversation as conv
+    conv = importlib.import_module("intelligence.conversation")
+finally:
+    if _saved_stt is None:
+        sys.modules.pop("audio.speech_to_text", None)
+    else:
+        sys.modules["audio.speech_to_text"] = _saved_stt
 sys.modules.pop("intelligence.conversation", None)
-# Also drop the package attribute so other test modules re-import their own
-# copy instead of silently receiving this one via `from intelligence import ...`.
-if getattr(intelligence, "conversation", None) is conv:
-    del intelligence.conversation
 
 PRIVATE = "my secret diary entry"
 URL = "http://192.0.2.10:11434"  # TEST-NET address, never routable

@@ -49,8 +49,8 @@ def benchmark_emotion(gray, faces):
 
 def benchmark_stt():
     start = time.perf_counter()
-    audio_file = record_audio()  # this includes the fixed 5s recording time
-    text = transcribe(audio_file)
+    audio_file = record_audio()  # includes waiting for speech and the 1.5s end-of-speech silence
+    text = transcribe(audio_file) if audio_file else ""
     elapsed_sec = time.perf_counter() - start
     return elapsed_sec, text
 

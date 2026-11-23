@@ -1,5 +1,6 @@
 """Hardware-free tests for the persistent conversation session and session locking."""
 import contextlib
+import importlib
 import io
 import os
 import subprocess
@@ -24,9 +25,22 @@ from behavior.state_machine import State
 _stt = types.ModuleType("audio.speech_to_text")
 _stt.record_audio = Mock(name="record_audio")
 _stt.transcribe = Mock(name="transcribe")
-with patch.dict(sys.modules, {"audio.speech_to_text": _stt}):
+# Import a fresh intelligence.conversation with only audio.speech_to_text stubbed.
+# Swap just that one sys.modules entry and restore it afterwards: patch.dict
+# would also drop every module first imported during this import (state
+# machine, Ollama client, ...), so later imports would create duplicate classes
+# (State, OllamaUnavailable) and break identity checks in other test modules.
+# importlib.import_module ignores stale `intelligence.conversation` attributes.
+_saved_stt = sys.modules.get("audio.speech_to_text")
+sys.modules["audio.speech_to_text"] = _stt
+try:
     sys.modules.pop("intelligence.conversation", None)
-    from intelligence import conversation as conv
+    conv = importlib.import_module("intelligence.conversation")
+finally:
+    if _saved_stt is None:
+        sys.modules.pop("audio.speech_to_text", None)
+    else:
+        sys.modules["audio.speech_to_text"] = _saved_stt
 sys.modules.pop("intelligence.conversation", None)
 
 

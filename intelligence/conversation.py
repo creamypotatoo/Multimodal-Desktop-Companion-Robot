@@ -250,6 +250,10 @@ class ConversationSession:
         self.fsm.transition_to(State.LISTENING)
         try:
             audio_file = self._record()
+            if audio_file is None:
+                # The voice-activity recorder heard no speech before its start
+                # timeout: a quiet room is not an error, keep listening.
+                return self._ok("empty")
             rms = recording_rms(audio_file) if self.silence_rms > 0 else None
             if rms is not None and rms < self.silence_rms:
                 self._log(f"Silence (rms={rms:.0f}); listening again.")
