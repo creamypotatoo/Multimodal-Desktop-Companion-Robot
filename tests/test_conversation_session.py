@@ -1,6 +1,7 @@
 """Hardware-free tests for the persistent conversation session and session locking."""
 import contextlib
 import io
+import os
 import subprocess
 import sys
 import tempfile
@@ -11,6 +12,10 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import numpy as np
+
+# These tests expect the rule-based default responder; never contact Ollama even
+# if ELI_OLLAMA_URL is exported (tests/__init__.py is skipped by `discover -s tests`).
+os.environ.pop("ELI_OLLAMA_URL", None)
 
 import main
 from behavior.state_machine import State
