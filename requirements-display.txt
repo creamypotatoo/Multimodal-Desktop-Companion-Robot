@@ -1,0 +1,9 @@
+# Eli animated eyes (display package). Install inside the project venv:
+#   python -m pip install -r requirements-display.txt
+# Pillow is needed everywhere. The Adafruit/Blinka packages only install on
+# Linux (the Raspberry Pi); Windows uses the preview or mock backend instead.
+# numpy (already used by the vision code) speeds up RGB565 conversion on the Pi.
+Pillow>=8.2
+numpy
+adafruit-blinka; platform_system == "Linux"
+adafruit-circuitpython-rgb-display; platform_system == "Linux"
