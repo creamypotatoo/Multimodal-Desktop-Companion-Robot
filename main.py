@@ -9,6 +9,7 @@ from intelligence.multimodal import fuse
 from intelligence.memory import remember_encounter, get_person_info
 from behavior.state_machine import RobotStateMachine, State
 from hardware.mock_hardware import MockMotors
+from display.robot_eyes import attach, start_robot_eyes, stop_robot_eyes
 
 EMOTION_CHECK_INTERVAL = 1.0
 # Consecutive frames with the same known identity before a session is locked.
@@ -64,9 +65,14 @@ def main(argv=None):
     candidate, candidate_frames = None, 0
     locked_person = locked_info = None
     emotion = conversation = None
+    eyes = None
     status = 0
 
     try:
+        # Optional TFT eyes (ELI_DISPLAY_BACKEND); independent of --headless,
+        # which only controls desktop windows. Never blocks startup.
+        eyes = start_robot_eyes()
+        attach(fsm, eyes)
         try:
             cascade, recognize = load_vision()
         except Exception as exc:
@@ -179,6 +185,7 @@ def main(argv=None):
         motors.stop()
         if not args.headless:
             close_windows()
+        stop_robot_eyes(eyes)
     return status
 
 

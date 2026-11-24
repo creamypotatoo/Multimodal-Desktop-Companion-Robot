@@ -3,3 +3,6 @@ import os
 # Keep the suite hermetic: never contact a real Ollama server, even when the
 # shell running the tests has ELI_OLLAMA_URL exported (e.g. on the Pi).
 os.environ.pop("ELI_OLLAMA_URL", None)
+# Likewise never drive a real TFT from main.py tests when the Pi shell has
+# the eye display enabled.
+os.environ.pop("ELI_DISPLAY_BACKEND", None)

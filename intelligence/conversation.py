@@ -216,6 +216,8 @@ class ConversationSession:
         self._record = record or record_audio
         self._transcribe = transcriber or transcribe
         self._speak = speaker or speak
+        # Speakers that accept on_start report when playback really begins.
+        self._speak_reports_start = "on_start" in _optional_kwargs(self._speak, ("on_start",))
         self._respond = responder or default_responder()
         self._respond_kwargs = _optional_kwargs(self._respond)
         # Session facts the language model may use (never images or audio).
@@ -230,11 +232,19 @@ class ConversationSession:
         print(f"[Conversation] {message}", flush=True)
 
     def say(self, text):
-        """Speak and block; returns False (logged) if TTS failed."""
-        self.fsm.transition_to(State.SPEAKING)
+        """Speak and block; returns False (logged) if TTS failed.
+
+        SPEAKING starts when audio playback begins if the speaker supports
+        ``on_start``; synthesis before that stays in the current state.
+        """
+        if not self._speak_reports_start:
+            self.fsm.transition_to(State.SPEAKING)
         print("Eli says:", text, flush=True)
         try:
-            self._speak(text)
+            if self._speak_reports_start:
+                self._speak(text, on_start=lambda: self.fsm.transition_to(State.SPEAKING))
+            else:
+                self._speak(text)
             return True
         except Exception as exc:
             self._log(f"TTS failed: {exc}")

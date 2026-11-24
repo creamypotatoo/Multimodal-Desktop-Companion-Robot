@@ -1,9 +1,61 @@
-# Animated eyes on the 2.4" ILI9341 TFT (Phase 1)
+# Animated eyes on the 2.4" ILI9341 TFT
 
 Eli's eyes are two rounded cyan shapes on a black 320 × 240 landscape screen.
 They blink naturally, glance around and move smoothly between ten expressions.
-Phase 1 is a **standalone engine**: `main.py` and the conversation pipeline do
-not use it yet (that is Phase 2).
+Phase 1 built the standalone engine. Phase 2 connects it to `main.py` and
+the conversation pipeline (see [Running with the robot](#running-with-the-robot-phase-2)).
+
+## Running with the robot (Phase 2)
+
+The eyes are **off unless `ELI_DISPLAY_BACKEND` is set**, so existing launch
+commands behave exactly as before. On the Pi, inside the project venv:
+
+```sh
+cd ~/eli_robot
+. .venv/bin/activate
+export ELI_DISPLAY_BACKEND=tft      # enable the physical TFT
+export ELI_DISPLAY_FPS=20           # 20 for testing; use 10 to save CPU
+export ELI_TTS_BACKEND=espeak       # unchanged speaker setup (SPEAKER_PI.md)
+export ELI_OLLAMA_URL=http://localhost:11434   # unchanged (OLLAMA_SETUP.md)
+python main.py --headless
+```
+
+`--headless` only disables desktop (OpenCV) windows; it does not disable the
+TFT. The SPI clock stays at the verified 16 MHz and partial updates stay on.
+
+| Robot state | When                                       | Eyes        |
+|-------------|--------------------------------------------|-------------|
+| IDLE        | Startup, face scanning, session end        | `idle`      |
+| LISTENING   | Microphone recording / voice detection     | `listening` |
+| THINKING    | Whisper transcription and Ollama reply, TTS synthesis | `thinking` |
+| SPEAKING    | From the moment audio playback (`aplay`) starts | `speaking` |
+
+- **Non-blocking:** state changes only update the eye state under a lock.
+  Rendering and SPI run on the eyes' own worker thread.
+- **Failure isolation:** if the display can't start (missing libraries, panel
+  not connected, busy GPIO, bad setting), main.py prints one line,
+  `[Display] Eyes disabled: ...`, and carries on without eyes. It doesn't
+  retry. If rendering fails later, the worker logs once and stops while the
+  conversation continues.
+- **Shutdown:** Ctrl+C or the end of a session stops the worker, blanks the
+  panel and releases the GPIO pins.
+
+`ELI_DISPLAY_BACKEND` values for `main.py`:
+
+| Value | Meaning |
+|-------|---------|
+| unset, `off`, `none`, `disabled` | No eyes (default) |
+| `tft`  | Physical ILI9341 |
+| `mock` | In-memory display; exercises the integration on Windows |
+| `auto` | `tft` on Linux, off elsewhere |
+
+`preview` is only for `python -m display.demo`, because Tk needs the main thread.
+
+Windows integration check (no display hardware needed):
+
+```powershell
+$env:ELI_DISPLAY_BACKEND = "mock"; python main.py
+```
 
 ## Architecture
 
@@ -18,6 +70,7 @@ not use it yet (that is Phase 2).
 | In-memory mock display                | `hardware/mock_hardware.py` (`MockDisplay`) |
 | Desktop preview window (Tkinter)      | `display/preview.py`           |
 | Standalone demo and benchmark         | `display/demo.py`              |
+| Robot state → expression (main.py)    | `display/robot_eyes.py`        |
 
 Data flow on each frame (worker thread, `fps` times per second):
 
@@ -57,8 +110,7 @@ eyes.stop()                      # joins worker, blanks screen, frees GPIO
 ```
 
 `set_expression` accepts any Enum with a matching name. That includes
-`behavior.state_machine.State` (IDLE, LISTENING, THINKING, SPEAKING), which is
-how Phase 2 will plug it in. Unknown expressions and non-finite gaze values
+`behavior.state_machine.State` (IDLE, LISTENING, THINKING, SPEAKING). Unknown expressions and non-finite gaze values
 raise `ValueError` and leave the state unchanged.
 
 ### Expressions
@@ -172,7 +224,7 @@ Explicit arguments and command-line flags override environment variables.
 
 | Variable               | Default    | Meaning |
 |------------------------|------------|---------|
-| `ELI_DISPLAY_BACKEND`  | auto       | `tft`, `preview` or `mock` (auto = tft on Linux, preview elsewhere) |
+| `ELI_DISPLAY_BACKEND`  | demo: auto; main.py: off | Demo: `tft`, `preview` or `mock` (auto = tft on Linux, preview elsewhere). main.py: see table above |
 | `ELI_DISPLAY_FPS`      | `10`       | Target frame rate, 0 < fps ≤ 60 |
 | `ELI_EYE_COLOR`        | `#00E5FF`  | Eye colour |
 | `ELI_DISPLAY_SPI_HZ`   | `16000000` | SPI clock |
@@ -212,7 +264,8 @@ and `min_sleep`. The expressions themselves are data in `display/expressions.py`
 
 ## Known limitations
 
-- Not yet connected to `main.py` or the state machine (Phase 2).
+- In `main.py`, the eyes show only the four robot states. Other expressions
+  (happy, sad, ...) are available through `EyeEngine` but nothing drives them yet.
 - **Partial updates need checking on the panel.** They write a rotated
   sub-rectangle at a computed native position. The maths is unit-tested
   against Pillow's own rotation, but not yet on the physical display. If you

@@ -133,7 +133,16 @@ def _run(cmd, *, timeout, stage, **kwargs):
         raise TTSError(f"{stage} could not start: {exc}") from None
 
 
-def _speak_espeak(text, config):
+def _notify(on_start):
+    """Run the playback-start callback; it must never break speech."""
+    if on_start is not None:
+        try:
+            on_start()
+        except Exception:
+            pass
+
+
+def _speak_espeak(text, config, on_start=None):
     tools = _find_pi_tools()
     if tools is None:
         missing = [tool for tool in PI_TOOLS if not shutil.which(tool)]
@@ -148,21 +157,27 @@ def _speak_espeak(text, config):
         _run([tools["ffmpeg"], "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
               "-i", raw_wav, "-filter:a", f"volume={config.volume:g}", out_wav],
              timeout=SYNTH_TIMEOUT, stage="ffmpeg")
+        _notify(on_start)
         _run([tools["aplay"], "-q", "-D", config.device, out_wav],
              timeout=PLAY_TIMEOUT, stage="aplay")
 
 
-def _speak_pyttsx3(text, config):
+def _speak_pyttsx3(text, config, on_start=None):
     import pyttsx3  # imported lazily so the Pi does not need it
 
     engine = pyttsx3.init()
     engine.setProperty("rate", RATE)
     engine.say(text)
+    _notify(on_start)
     engine.runAndWait()  # blocks until speech finishes
 
 
-def speak(text, config=None):
-    """Speak ``text`` and block until finished. Calls never overlap."""
+def speak(text, config=None, on_start=None):
+    """Speak ``text`` and block until finished. Calls never overlap.
+
+    ``on_start`` (optional) is called once, just before audio playback begins
+    (after synthesis), e.g. to show the speaking expression.
+    """
     if text is None or not str(text).strip():
         return
     text = str(text)
@@ -170,9 +185,9 @@ def speak(text, config=None):
     backend = resolve_backend(config)
     with _speech_lock:
         if backend == "espeak":
-            _speak_espeak(text, config)
+            _speak_espeak(text, config, on_start)
         else:
-            _speak_pyttsx3(text, config)
+            _speak_pyttsx3(text, config, on_start)
 
 
 def _cli(argv=None):

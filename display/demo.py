@@ -1,4 +1,4 @@
-"""Standalone demo for Eli's animated eyes (Phase 1, not wired into main.py).
+"""Standalone demo for Eli's animated eyes (main.py integration: display/robot_eyes.py).
 
   Windows preview:   python -m display.demo --backend preview
   Raspberry Pi TFT:  python -m display.demo --backend tft
