@@ -105,10 +105,59 @@ def _back(d, cx, cy, s, c, bg, w):
            fill=c, width=w + 1, joint='curve')
 
 
+def _play(d, cx, cy, s, c, bg, w):
+    h = s * 0.36
+    d.polygon(((cx - h * 0.7, cy - h), (cx + h, cy), (cx - h * 0.7, cy + h)), fill=c)
+
+
+def _pause(d, cx, cy, s, c, bg, w):
+    h, bw = s * 0.34, s * 0.08
+    for dx in (-s * 0.16, s * 0.16):
+        d.rectangle((cx + dx - bw, cy - h, cx + dx + bw, cy + h), fill=c)
+
+
+def _reset(d, cx, cy, s, c, bg, w):
+    r = s * 0.34
+    d.arc(_r(cx, cy, r), 300, 220, fill=c, width=w)
+    ax, ay = cx + r * math.cos(math.radians(300)), cy + r * math.sin(math.radians(300))
+    a = s * 0.16
+    d.polygon(((ax - a, ay - a * 0.9), (ax + a * 0.9, ay - a * 0.4), (ax - a * 0.1, ay + a)), fill=c)
+
+
+def _skip(d, cx, cy, s, c, bg, w):
+    h = s * 0.3
+    d.polygon(((cx - h, cy - h), (cx + h * 0.5, cy), (cx - h, cy + h)), fill=c)
+    d.rectangle((cx + h * 0.55, cy - h, cx + h * 0.55 + w + 1, cy + h), fill=c)
+
+
+def _lap(d, cx, cy, s, c, bg, w):
+    h = s * 0.38
+    d.line((cx - h * 0.6, cy - h, cx - h * 0.6, cy + h), fill=c, width=w)
+    d.polygon(((cx - h * 0.6, cy - h), (cx + h * 0.8, cy - h * 0.55), (cx - h * 0.6, cy - h * 0.1)), fill=c)
+
+
+def _cancel(d, cx, cy, s, c, bg, w):
+    h = s * 0.26
+    d.line((cx - h, cy - h, cx + h, cy + h), fill=c, width=w + 1)
+    d.line((cx - h, cy + h, cx + h, cy - h), fill=c, width=w + 1)
+
+
+def _plus(d, cx, cy, s, c, bg, w):
+    h = s * 0.3
+    d.line((cx - h, cy, cx + h, cy), fill=c, width=w + 1)
+    d.line((cx, cy - h, cx, cy + h), fill=c, width=w + 1)
+
+
+def _minus(d, cx, cy, s, c, bg, w):
+    h = s * 0.3
+    d.line((cx - h, cy, cx + h, cy), fill=c, width=w + 1)
+
+
 ICONS = {
     'timer': _timer, 'stopwatch': _stopwatch, 'focus': _focus, 'clock': _clock,
     'alarm': _alarm, 'calendar': _calendar, 'sleep': _sleep, 'settings': _settings,
-    'companion': _companion, 'back': _back,
+    'companion': _companion, 'back': _back, 'play': _play, 'pause': _pause, 'reset': _reset,
+    'skip': _skip, 'lap': _lap, 'cancel': _cancel, 'plus': _plus, 'minus': _minus,
 }
 
 

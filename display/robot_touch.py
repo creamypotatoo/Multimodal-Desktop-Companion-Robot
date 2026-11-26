@@ -45,8 +45,8 @@ def create_touch(name, environ=None, *, bus=None, calibration=None):
 class RobotTouch:
     """Running touch input + UI. ``stop()`` detaches the UI and frees GPIO."""
 
-    def __init__(self, eyes, ui, controller):
-        self.eyes, self.ui, self.controller = eyes, ui, controller
+    def __init__(self, eyes, ui, controller, alerts=None):
+        self.eyes, self.ui, self.controller, self.alerts = eyes, ui, controller, alerts
 
     @property
     def backend(self):
@@ -57,9 +57,12 @@ class RobotTouch:
             self.controller.stop()   # joins the touch thread, releases T_CS/T_IRQ
         finally:
             self.eyes.detach_ui()
+            if self.alerts is not None:
+                self.alerts.stop()
 
 
-def start_robot_touch(eyes, environ=None, *, log=_log, backend_factory=None):
+def start_robot_touch(eyes, environ=None, *, fsm=None, log=_log, backend_factory=None,
+                      speak=None):
     """Start touch input and the menu once; return RobotTouch or None. Never raises."""
     environ = os.environ if environ is None else environ
     try:
@@ -76,15 +79,18 @@ def start_robot_touch(eyes, environ=None, *, log=_log, backend_factory=None):
         calibration = TouchCalibration.from_env(environ, width=width, height=height)
         bus = getattr(eyes.display, 'spi_bus', None)
         backend = (backend_factory or create_touch)(name, environ, bus=bus, calibration=calibration)
-        ui = UIManager(size=(width, height), on_change=eyes.request_frame)
+        from display.ui.alerts import AlertPlayer
+        alerts = AlertPlayer(eyes, fsm, speak)
+        ui = UIManager(size=(width, height), on_change=eyes.request_frame, on_event=alerts.handle)
         controller = TouchController(backend, ui.handle_touch, calibration)
         controller.start()           # raises TouchUnavailableError if the hardware is absent
     except Exception as exc:
         log(f'Touch disabled: {exc}')
         return None
+    alerts.start()
     eyes.attach_ui(ui)
     log(f'Touch input running on {name}; tap the eyes to open the menu.')
-    return RobotTouch(eyes, ui, controller)
+    return RobotTouch(eyes, ui, controller, alerts)
 
 
 def stop_robot_touch(touch, *, log=_log):

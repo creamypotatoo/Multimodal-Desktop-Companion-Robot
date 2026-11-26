@@ -22,7 +22,8 @@ class Button:
     action: str = ''
     icon: Optional[str] = None
     accent: tuple = THEME.accent
-    style: str = 'tile'           # 'tile' (icon above label), 'bar' (icon left of label), 'hidden'
+    style: str = 'tile'           # 'tile' (icon above label), 'bar' (icon left of label),
+                                  # 'icon' (icon only), 'hidden'
 
     def contains(self, x, y, slop=0):
         x0, y0, x1, y1 = self.rect
@@ -121,8 +122,11 @@ def draw_button(draw, button, pressed=False, theme=THEME):
             draw_icon(draw, button.icon, (x0 + x1) / 2, cy_icon, icon_size, button.accent, fill)
         fnt = fit_font(draw, button.label, 13, w - 8)
         text_center(draw, ((x0 + x1) / 2, y0 + h * 0.78), button.label, fnt, label_color)
+    elif button.style == 'icon':
+        draw_icon(draw, button.icon, (x0 + x1) / 2, (y0 + y1) / 2, min(24, h - 14, w - 14),
+                  button.accent, fill)
     else:  # 'bar'
-        fnt = fit_font(draw, button.label, 15, w - 44, bold=True)
+        fnt = fit_font(draw, button.label, 15, w - (44 if button.icon else 12), bold=True)
         left, _, right, _ = draw.textbbox((0, 0), button.label, font=fnt)
         icon_size = min(20, h - 16) if button.icon else 0
         total = (right - left) + (icon_size + 8 if button.icon else 0)
