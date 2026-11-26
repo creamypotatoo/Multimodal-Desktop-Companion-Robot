@@ -21,6 +21,16 @@ the image before returning. Backends: ``hardware.tft_display.TFTDisplay``,
 
 Frames whose integer geometry is unchanged are skipped entirely (no drawing,
 no transfer). Otherwise only the union of the old and new eye bounds is sent.
+
+Touch UI (optional): ``attach_ui(ui)`` makes this worker, still the only
+display owner, ask ``ui.render(now, expression)`` for a frame on every tick
+(see ``display.ui.manager.UIManager``). While a UI screen is showing, the eye
+animation keeps running and following expression changes but is not drawn;
+when the UI returns to companion mode the eyes are repainted in full with the
+current expression. A failing UI is detached after one log line, so the eyes
+carry on. ``request_frame()`` wakes the worker early for snappy touch feedback.
+A backend's ``show`` may return False (frame not sent, e.g. SPI bus busy);
+the next frame is then sent in full.
 """
 import os
 import platform
@@ -73,7 +83,7 @@ def create_display(name='auto', **kwargs):
 
 class EyeEngine:
     def __init__(self, display=None, config=None, animation=None, *, clock=time.monotonic,
-                 rng=None, clear_on_stop=True, niceness=5, log=print):
+                 rng=None, clear_on_stop=True, niceness=5, log=print, ui=None):
         if display is None:
             from hardware.mock_hardware import MockDisplay
             display = MockDisplay()
@@ -94,6 +104,9 @@ class EyeEngine:
         self._animator = EyeAnimator(self.animation, rng=rng, now=clock())
         self._thread = None
         self._stop = threading.Event()
+        self._wake = threading.Event()
+        self._ui = ui
+        self._ui_shown = False
         self._open = False
         self._last_layout = None
         self._last_bounds = None
@@ -122,6 +135,7 @@ class EyeEngine:
             self.last_error = None
             self._last_layout = self._last_bounds = None  # first frame is full
             self._stop = threading.Event()
+            self._wake.clear()
             with self._state_lock:
                 self._animator.update(self._clock())  # avoid a dt jump after idle time
             self._reset_stats()
@@ -134,6 +148,7 @@ class EyeEngine:
         """Stop the worker, blank the screen and close the display. Idempotent."""
         with self._lifecycle_lock:
             self._stop.set()
+            self._wake.set()
             thread, self._thread = self._thread, None
             if thread is not None and thread is not threading.current_thread():
                 thread.join(timeout)
@@ -150,6 +165,23 @@ class EyeEngine:
                         self.display.close()
                     finally:
                         self._open = False
+
+    @property
+    def ui(self):
+        return self._ui
+
+    def attach_ui(self, ui):
+        """Let ``ui`` supply frames (see module docstring); None detaches."""
+        self._ui = ui
+        self.request_frame()
+
+    def detach_ui(self):
+        self._ui = None
+        self.request_frame()
+
+    def request_frame(self):
+        """Wake the worker to render now instead of at the next frame slot."""
+        self._wake.set()
 
     def set_expression(self, expression):
         """Change expression (Expression, name or matching Enum). ValueError if unknown."""
@@ -218,9 +250,51 @@ class EyeEngine:
                            overruns=0, render_total=0.0, render_max=0.0,
                            transfer_total=0.0, transfer_max=0.0, pixels=0)
 
+    def _ui_frame(self, now, expression):
+        """Send a UI frame if a UI screen is showing; None means draw the eyes."""
+        ui = self._ui
+        if ui is None:
+            frame = None
+        else:
+            try:
+                frame = ui.render(now, expression)
+            except Exception as exc:
+                self._ui = None
+                self._log(f'[Display] Touch UI disabled after error: {type(exc).__name__}: {exc}')
+                frame = None
+        if frame is None:
+            if self._ui_shown:  # back to companion mode: repaint the eyes in full
+                self._ui_shown = False
+                self._last_layout = self._last_bounds = None
+            return None
+        self._ui_shown = True
+        image, bbox = frame
+        if image is None:
+            with self._stats_lock:
+                self._stats['frames_skipped'] += 1
+            return False
+        t1 = time.perf_counter()
+        if self.display.show(image, bbox) is False:
+            ui.invalidate()
+            return False
+        t2 = time.perf_counter()
+        width, height = self.config.size
+        pixels = width * height if bbox is None else (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
+        with self._stats_lock:
+            s = self._stats
+            s['frames_sent'] += 1
+            s['transfer_total'] += t2 - t1
+            s['transfer_max'] = max(s['transfer_max'], t2 - t1)
+            s['pixels'] += pixels
+        return True
+
     def _tick(self, now):
         with self._state_lock:
             state = self._animator.update(now)
+            expression = self._animator.expression
+        sent = self._ui_frame(now, expression)
+        if sent is not None:
+            return sent
         t0 = time.perf_counter()
         layout = self._renderer.layout(state)
         if layout == self._last_layout:
@@ -239,7 +313,9 @@ class EyeEngine:
             dirty = (max(0, x0 - DIRTY_PADDING), max(0, y0 - DIRTY_PADDING),
                      min(width, x1 + DIRTY_PADDING), min(height, y1 + DIRTY_PADDING))
             pixels = (dirty[2] - dirty[0]) * (dirty[3] - dirty[1])
-        self.display.show(image, dirty)
+        if self.display.show(image, dirty) is False:
+            self._last_layout = self._last_bounds = None  # resend in full next frame
+            return False
         t2 = time.perf_counter()
         self._last_layout, self._last_bounds = layout, bounds
         with self._stats_lock:
@@ -278,7 +354,9 @@ class EyeEngine:
                     if delay < -period:
                         next_time = time.monotonic()  # fell behind: do not try to catch up
                     delay = min_sleep                 # always yield the CPU
-                stop.wait(delay)
+                if self._wake.wait(delay):            # stop() or request_frame()
+                    self._wake.clear()
+                    next_time = time.monotonic()      # render now, then one period later
         except Exception as exc:
             self.last_error = exc
             self._log(f'[Display] Eye animation stopped: {type(exc).__name__}: {exc}')

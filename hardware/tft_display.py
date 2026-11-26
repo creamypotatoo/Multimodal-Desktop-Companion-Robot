@@ -27,12 +27,20 @@ Configuration (explicit arguments override environment variables):
   ELI_DISPLAY_RST        board pin name for RESET     (default: D25)
   ELI_DISPLAY_ROTATION   0, 90, 180 or 270            (default: 90)
   ELI_DISPLAY_PARTIAL    1 = send only changed region (default: 1)
+
+The SPI bus is wrapped in ``hardware.spi_bus.SharedSPIBus`` and exposed as
+``TFTDisplay.spi_bus`` so the XPT2046 touch controller (same bus, CS GPIO5)
+can share it. Every panel transfer holds that lock; if the bus stays busy
+beyond its timeout the frame is dropped (``show`` returns False) and the next
+frame is sent in full, so the panel never keeps a stale region.
 """
 import os
 import re
 from dataclasses import dataclass
 
 from PIL import Image
+
+from hardware.spi_bus import SharedSPIBus, SPIBusTimeout
 
 ROTATIONS = (0, 90, 180, 270)
 # Pillow transposes equal to Image.rotate(angle, expand=True), as used by
@@ -158,6 +166,9 @@ class TFTDisplay:
         self._disp = None
         self._pins = []
         self._spi = None
+        self.spi_bus = None
+        self.dropped_frames = 0
+        self._force_full = False
 
     @property
     def is_open(self):
@@ -177,10 +188,12 @@ class TFTDisplay:
                 self._pins.append(digitalio.DigitalInOut(pins[name]))
             cs, dc, reset = self._pins
             self._spi = board.SPI()
-            self._disp = ili9341.ILI9341(
-                self._spi, cs=cs, dc=dc, rst=reset, baudrate=cfg.baudrate,
-                width=cfg.native_width, height=cfg.native_height, rotation=cfg.rotation)
-            self._disp.fill(0)
+            self.spi_bus = SharedSPIBus(self._spi, owner=False)  # this display deinits it
+            with self.spi_bus.transaction():
+                self._disp = ili9341.ILI9341(
+                    self._spi, cs=cs, dc=dc, rst=reset, baudrate=cfg.baudrate,
+                    width=cfg.native_width, height=cfg.native_height, rotation=cfg.rotation)
+                self._disp.fill(0)
         except Exception as exc:
             self._release()
             hint = ' Is another process using the display or GPIO?' \
@@ -190,36 +203,56 @@ class TFTDisplay:
 
     def show(self, image, bbox=None):
         """Send ``image`` (frame-sized RGB). ``bbox`` limits the transfer to a
-        changed region (exclusive x0, y0, x1, y1) when partial updates are on."""
+        changed region (exclusive x0, y0, x1, y1) when partial updates are on.
+
+        Returns False (frame dropped, next frame forced full) if the shared SPI
+        bus could not be acquired in time; True otherwise."""
         if self._disp is None:
             raise RuntimeError('TFT display is not open')
         if image.size != (self.width, self.height):
             raise ValueError(f'Expected a {self.width}x{self.height} image, got {image.size}')
-        if bbox is None or not self.partial_updates or \
-                tuple(bbox) == (0, 0, self.width, self.height):
-            # Same call as the verified full-screen hardware test.
-            self._disp.image(image)
-            return
-        x0, y0, x1, y1 = (max(0, bbox[0]), max(0, bbox[1]),
-                          min(self.width, bbox[2]), min(self.height, bbox[3]))
-        if x1 <= x0 or y1 <= y0:
-            return
-        crop = image.crop((x0, y0, x1, y1))
-        rotation = self.config.rotation
-        if rotation:
-            crop = crop.transpose(_TRANSPOSE[rotation])
-        nx, ny = native_origin((x0, y0, x1, y1), rotation, (self.width, self.height))
-        self._disp.image(crop, rotation=0, x=nx, y=ny)
+        if self._force_full:
+            bbox = None
+        try:
+            if bbox is None or not self.partial_updates or \
+                    tuple(bbox) == (0, 0, self.width, self.height):
+                # Same call as the verified full-screen hardware test.
+                with self.spi_bus.transaction():
+                    self._disp.image(image)
+                self._force_full = False
+                return True
+            x0, y0, x1, y1 = (max(0, bbox[0]), max(0, bbox[1]),
+                              min(self.width, bbox[2]), min(self.height, bbox[3]))
+            if x1 <= x0 or y1 <= y0:
+                return True
+            crop = image.crop((x0, y0, x1, y1))
+            rotation = self.config.rotation
+            if rotation:
+                crop = crop.transpose(_TRANSPOSE[rotation])
+            nx, ny = native_origin((x0, y0, x1, y1), rotation, (self.width, self.height))
+            with self.spi_bus.transaction():
+                self._disp.image(crop, rotation=0, x=nx, y=ny)
+            return True
+        except SPIBusTimeout:
+            self.dropped_frames += 1
+            self._force_full = True
+            return False
 
     def clear(self):
         if self._disp is not None:
-            self._disp.fill(0)
+            try:
+                with self.spi_bus.transaction():
+                    self._disp.fill(0)
+            except SPIBusTimeout:
+                self._force_full = True
 
     def close(self):
         self._release()
 
     def _release(self):
         self._disp = None
+        self.spi_bus = None
+        self._force_full = False
         for pin in self._pins:
             try:
                 pin.deinit()

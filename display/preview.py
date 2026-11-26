@@ -4,6 +4,8 @@ Tk must run on the main thread, while the eye engine renders on its worker
 thread. ``show()`` therefore only pastes the frame into one preallocated slot
 under a lock; ``run()`` (main thread) polls that slot and updates the window.
 Closing the window, pressing Esc/q or Ctrl+C makes ``run()`` return.
+``run(on_mouse=...)`` reports left-button presses/releases in frame pixels
+(window coordinates divided by the zoom), used to simulate touch taps.
 """
 import signal
 import threading
@@ -71,13 +73,27 @@ class PreviewDisplay:
         """Thread-safe: ask ``run()`` to return."""
         self._close_requested.set()
 
-    def run(self, on_key=None, poll_ms=15):
-        """Run the window on the main thread until it is closed."""
+    def frame_coords(self, x, y):
+        """Window pixel -> frame pixel, clamped to the frame."""
+        return (max(0, min(self.width - 1, int(x) // self.scale)),
+                max(0, min(self.height - 1, int(y) // self.scale)))
+
+    def run(self, on_key=None, poll_ms=15, on_mouse=None):
+        """Run the window on the main thread until it is closed.
+
+        ``on_mouse(kind, x, y)`` gets ``'press'``/``'release'`` in frame pixels.
+        """
         if not self.is_open:
             raise RuntimeError('Preview display is not open')
         root = self._root
         if on_key is not None:
             root.bind('<Key>', lambda event: on_key(event.keysym))
+        if on_mouse is not None:
+            self._label.configure(cursor='hand2')
+            self._label.bind('<ButtonPress-1>',
+                             lambda event: on_mouse('press', *self.frame_coords(event.x, event.y)))
+            self._label.bind('<ButtonRelease-1>',
+                             lambda event: on_mouse('release', *self.frame_coords(event.x, event.y)))
         root.bind('<Escape>', lambda event: self.request_close())
         root.bind('q', lambda event: self.request_close())
 

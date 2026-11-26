@@ -6,3 +6,5 @@ os.environ.pop("ELI_OLLAMA_URL", None)
 # Likewise never drive a real TFT from main.py tests when the Pi shell has
 # the eye display enabled.
 os.environ.pop("ELI_DISPLAY_BACKEND", None)
+# ... and never open the real touch controller either.
+os.environ.pop("ELI_TOUCH_BACKEND", None)

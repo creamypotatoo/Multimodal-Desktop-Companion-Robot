@@ -57,6 +57,72 @@ Windows integration check (no display hardware needed):
 $env:ELI_DISPLAY_BACKEND = "mock"; python main.py
 ```
 
+## Touchscreen and Eli OS menu (opt-in)
+
+Tapping the eyes opens a 3 × 3 menu (Timer, Stopwatch, Focus, Clock, Alarm,
+Calendar, Sleep, Settings, Companion). In Phase 1 every utility is a
+labelled placeholder with **Back** and **Companion** buttons. Companion
+returns to the eyes. Touch is **off unless `ELI_TOUCH_BACKEND` is set**, and
+it needs the eye display.
+
+```sh
+export ELI_DISPLAY_BACKEND=tft
+export ELI_TOUCH_BACKEND=xpt2046
+python main.py --headless
+# standalone check without the conversation:
+python -m display.ui_demo --backend tft
+```
+
+| Touch pin | Pi GPIO | Physical pin |
+|-----------|---------|--------------|
+| T_CLK / T_DIN / T_OUT | GPIO11 / GPIO10 / GPIO9 | 23 / 19 / 21 (shared with the TFT) |
+| T_CS      | GPIO5   | 29 |
+| T_IRQ     | GPIO6   | 31 (active low, internal pull-up) |
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `ELI_TOUCH_BACKEND` | `off` | `off`, `xpt2046` or `mock` |
+| `ELI_TOUCH_CS` / `ELI_TOUCH_IRQ` | `5` / `6` | BCM numbers |
+| `ELI_TOUCH_SPI_HZ` | `500000` | Touch SPI clock (mode 0) |
+| `ELI_TOUCH_RAW_X_MIN` / `_MAX` | `676` / `3469` | Raw X span → screen y |
+| `ELI_TOUCH_RAW_Y_MIN` / `_MAX` | `652` / `3435` | Raw Y span → screen x |
+| `ELI_TOUCH_SWAP_AXES` | `1` | Raw axes are swapped on this panel |
+| `ELI_TOUCH_INVERT_X` / `_Y` | `0` / `0` | Mirror an axis |
+| `ELI_UI_FONT` / `ELI_UI_FONT_BOLD` | DejaVu Sans | Optional .ttf paths |
+
+How it works:
+
+- **One display owner.** The `EyeEngine` worker is still the only thread that
+  draws or touches the TFT. When a menu screen is showing, it sends
+  `UIManager` frames instead of eye frames. The eye animation keeps following
+  the conversation state, so returning to Companion repaints the eyes in full
+  with the current expression. Conversation changes never switch screens; the
+  menu header shows a small status pill (Idle/Listening/Thinking/Speaking).
+- **Shared SPI.** The TFT and touch use one `busio.SPI` and one lock
+  (`hardware/spi_bus.py`, bounded waits). Each touch sample reconfigures
+  500 kHz mode 0 and toggles only T_CS. The TFT driver sets 16 MHz again on
+  its next write. The lock is never held while waiting for a finger. If the
+  TFT can't get the bus within 0.5 s, it drops that frame and sends the next
+  one in full.
+- **Touch thread** (`eli-touch`, nice +5): polls T_IRQ every 15 ms with no SPI.
+  On a press it waits 80 ms, then takes 15 samples (each: discard + keep for X
+  `0xD0` and Y `0x90`). It keeps samples with 100 < raw < 4000, needs at least
+  8, takes the median, then calibrates. That gives one tap per press; the
+  press ends after IRQ stays high for 50 ms.
+- **Efficient redraws:** a screen is sent in full once. After that, only a
+  pressed button or the status pill is resent; unchanged screens send nothing.
+- **Failure isolation:** if touch can't start, main.py logs one line,
+  `[Touch] Touch disabled: ...`, and the eyes and conversation carry on.
+  Shutdown stops touch (releasing GPIO5/6) before the eyes release SPI.
+
+Windows preview (click = tap; keys 1–4 simulate conversation states):
+
+```powershell
+python -m display.ui_demo
+python -m display.ui_demo --simulate-conversation
+python -m display.ui_demo --backend mock --tour        # headless self-check
+```
+
 ## Architecture
 
 | Responsibility                        | Module                         |
