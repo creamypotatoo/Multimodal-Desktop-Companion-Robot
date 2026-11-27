@@ -11,11 +11,14 @@ def main():
     parser.add_argument("--wheels-lifted", action="store_true")
     parser.add_argument("--verify", choices=["stop", "estop", "watchdog"],
                         help="run one supervised 1000 ms safety exercise")
-    parser.add_argument("--speed", type=int, metavar="1-40", default=25)
+    parser.add_argument("--speed", type=int, metavar="1-100",
+                        help="PWM percentage (default: 80, or 25 with --verify)")
     parser.add_argument("--duration-ms", type=int, metavar="1-1000", default=300)
     args = parser.parse_args()
-    if not 1 <= args.speed <= 40 or not 1 <= args.duration_ms <= 1000:
-        parser.error("--speed must be 1-40 and --duration-ms must be 1-1000")
+    if args.speed is None:
+        args.speed = 25 if args.verify else 80
+    if not 1 <= args.speed <= 100 or not 1 <= args.duration_ms <= 1000:
+        parser.error("--speed must be 1-100 and --duration-ms must be 1-1000")
     if args.verify and not args.move:
         parser.error("--verify requires a direction via --move")
     if args.move and not args.wheels_lifted:

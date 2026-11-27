@@ -130,7 +130,7 @@ int main(int argc, char**) {
     now += 20;
     polls();
     direction(true, false, 102);
-    has(send(drive(7, old, "right", 41)), "invalid_speed");
+    has(send(drive(7, old, "right", 101)), "invalid_speed");
     has(send(drive(8, old, "right", 0)), "invalid_speed");
     has(send(drive(9, old, "right", 40, 0)), "invalid_duration");
     has(send(drive(10, old, "right", 40, 1001)), "invalid_duration");
@@ -215,8 +215,14 @@ int main(int argc, char**) {
     now += 20;
     current = link(28);
     send(sessionCommand(1, "heartbeat", current));
+    const unsigned speeds[] = {1, 40, 60, 80, 100};
+    const unsigned duties[] = {3, 102, 153, 204, 255};
+    for (unsigned i = 0; i < sizeof(speeds) / sizeof(speeds[0]); ++i) {
+        has(send(drive(2 + i, current, "right", speeds[i])), "\"state\":\"moving\"");
+        direction(true, false, duties[i]);
+    }
     failWrite = true;
-    has(send(drive(2, current, "right")), "pwm_fault");
+    has(send(drive(7, current, "right")), "pwm_fault");
     disabled();
     std::cout << "Serial safety, timing, rollover, directions, backpressure and PWM tests passed\n";
 }

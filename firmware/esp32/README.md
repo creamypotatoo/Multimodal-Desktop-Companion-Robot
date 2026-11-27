@@ -37,7 +37,7 @@ only after the bench checks pass. Keep clear of edges and obstacles.
 
 In Arduino IDE install **esp32 by Espressif Systems** version **3.3.5** from
 Boards Manager. Add the Espressif package index URL below in Preferences if
-needed. No extra Arduino libraries are required. Select **ESP32 Dev Module**
+needed. No extra Arduino libraries are required. Select **DOIT ESP32 DEVKIT V1**
 for the ESP32-WROOM-32 DevKit V1 and select its USB COM port. Open
 `eli_motor_controller/eli_motor_controller.ino` from the firmware directory.
 Verify first. With motor power disconnected, upload, then open Serial Monitor
@@ -51,8 +51,8 @@ the port reported by `arduino-cli board list`.
 $index = 'https://espressif.github.io/arduino-esp32/package_esp32_index.json'
 arduino-cli core update-index --additional-urls $index
 arduino-cli core install esp32:esp32@3.3.5 --additional-urls $index
-arduino-cli compile --fqbn esp32:esp32:esp32 firmware/esp32/eli_motor_controller
-arduino-cli upload --fqbn esp32:esp32:esp32 --port COM5 firmware/esp32/eli_motor_controller
+arduino-cli compile --fqbn esp32:esp32:esp32doit-devkit-v1 firmware/esp32/eli_motor_controller
+arduino-cli upload --fqbn esp32:esp32:esp32doit-devkit-v1 --port COM5 firmware/esp32/eli_motor_controller
 ```
 
 ## Automated tests
@@ -69,9 +69,18 @@ if ($LASTEXITCODE -ne 0) { throw 'Host build failed' }
 & $testExe
 if ($LASTEXITCODE -ne 0) { throw 'Host test failed' }
 & $testExe fail-attach
+if ($LASTEXITCODE -ne 0) { throw 'PWM attach failure test failed' }
+python -m unittest discover -s firmware/esp32/tests -p test_bench_serial.py
 ```
 
 ## Bench procedure
+
+Before high-duty testing, verify the battery's maximum motor-supply voltage
+against both motors' rated voltage. Check each motor's stall current at that
+voltage and confirm the battery can supply both startup loads together.
+Compare the expected current with the TB6612FNG carrier's per-channel limits,
+peak-duration conditions and thermal limits with both channels active. Use
+the actual carrier documentation and the [Toshiba TB6612FNG datasheet](https://toshiba.semicon-storage.com/info/TB6612FNG_datasheet_en_20141001.pdf?did=10660).
 
 1. With motor power disconnected, verify continuity, common ground and the
    STBY pull-down. Reboot and measure STBY low. Send
@@ -82,7 +91,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Host test failed' }
    than typing motion commands into Serial Monitor. See [the protocol](PROTOCOL.md).
 3. Close Serial Monitor before running the helper. Install PySerial only on the
    bench computer. The default query sends no movement. Each opt-in invocation
-   sends one pulse and attempts STOP on exit.
+   sends one pulse and attempts STOP on exit. Opt-in movement defaults to 80%.
+   Safety exercises default to 25%. Use `--speed` to override either default
+   with a percentage from 1 to 100.
 
 ```powershell
 python -m pip install pyserial==3.5
@@ -106,7 +117,7 @@ python firmware/esp32/tests/bench_serial.py COM5 --move right --wheels-lifted --
    if the bench setup allows it.
 7. Send malformed JSON and a frame with 193 payload characters while moving.
    Verify each stops and invalidates the session. Verify attempts with speed
-   0 or 41 and duration 0 or 1,001 ms are rejected. Repeat an accepted move ID
+   0 or 101 and duration 0 or 1,001 ms are rejected. Repeat an accepted move ID
    with a different duration and verify the original deadline is unchanged.
    Queue a move, a STOP and an old-session move together. Verify no restart.
 8. Power-cycle with the wheels lifted. Verify no automatic movement and no
@@ -128,7 +139,8 @@ python firmware/esp32/tests/bench_serial.py COM5 --move forward --wheels-lifted 
   during connection if its USB adapter does not enter bootloader mode.
 - **No response to a direction.** Check the status, wiring, motor supply and
   common ground before increasing duty. A small duty may not overcome static
-  friction. Retain the configured 40% limit during bench checks.
+  friction. Start at a low duty and increase only after checking the supply,
+  motor and driver limits.
 - **`pwm_fault`.** STBY remains low. Disconnect motor power and inspect the
   build configuration and board before rebooting.
 - **`session_invalid`.** Obtain a new session, send a heartbeat, and issue a

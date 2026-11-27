@@ -56,9 +56,15 @@ does not affect sequencing. Repeating a hello ID while that hello's session
 is valid returns `duplicate_id`; use a new ID for a deliberate re-handshake.
 STOP and ESTOP are processed even if their IDs have previously appeared.
 
-Speed is 1–40 percent by default. Zero is rejected; use STOP. Duration is
-1–1,000 ms and includes any reversal dead time. Duty is rounded from
-`speed * 255 / 100`. Forward is (+,+), backward (−,−), left (−,+), right
+Speed accepts integer percentages from 1 to 100 with the default configuration.
+`MAX_SPEED` can be lowered at build time. Use STOP for zero drive. Duration is
+1 to 1,000 ms and includes any reversal dead time. Duty is rounded from
+`speed * 255 / 100`, giving 102 at 40%, 153 at 60%, 204 at 80%, and 255 at 100%.
+Before high-duty testing, verify motor voltage and stall current, the battery's
+ability to supply both motors, and the TB6612FNG carrier's current and thermal
+limits. See the [bench guide](README.md#bench-procedure).
+
+Forward is (+,+), backward (−,−), left (−,+), right
 (+,−) in left/right order. Reversal disables STBY before either direction
 changes and keeps drive disabled for at least 20 ms from the last disable.
 Duration expiry disables STBY and leaves the session usable while heartbeats
