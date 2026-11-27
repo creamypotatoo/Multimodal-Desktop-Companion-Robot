@@ -11,7 +11,7 @@ from web.config import ConfigError, WebConfig
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description='Eli web dashboard (Phase 1, mock mode)')
+    parser = argparse.ArgumentParser(description='Eli web dashboard (mock robot mode)')
     parser.add_argument('--host', help='bind address (overrides ELI_WEB_HOST)')
     parser.add_argument('--port', type=int, help='port (overrides ELI_WEB_PORT)')
     args = parser.parse_args(argv)
@@ -34,7 +34,12 @@ def main(argv=None):
         print('[Web] ELI_WEB_SECRET_KEY not set: sessions end when the server restarts.', flush=True)
     if not config.is_local:
         print('[Web] LAN access enabled; the dashboard is reachable by other devices.', flush=True)
-    app.run(host=config.host, port=config.port, debug=False, threaded=True, use_reloader=False)
+    utilities = app.extensions['eli_utilities']
+    utilities.start_scheduler()
+    try:
+        app.run(host=config.host, port=config.port, debug=False, threaded=True, use_reloader=False)
+    finally:
+        utilities.stop_scheduler()
     return 0
 
 

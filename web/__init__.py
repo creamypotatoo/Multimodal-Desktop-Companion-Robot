@@ -1,13 +1,14 @@
-"""Eli's web control dashboard (Phase 1: mock mode).
+"""Eli's web control dashboard with mock robot controls and live utilities.
 
 ``create_app()`` builds the Flask application. It never imports or opens
-hardware: the robot is a ``web.services.RobotService`` (``MockRobotService`` in
-Phase 1). Run it with ``python -m web``; see WEB_DASHBOARD.md.
+hardware. Robot commands go through ``web.services.RobotService``.
+Run it with ``python -m web``; see WEB_DASHBOARD.md.
 """
 from datetime import timedelta
 
 from flask import Flask, request
 
+from productivity import UtilityService
 from web import api, auth, pages
 from web.config import WebConfig
 from web.responses import error
@@ -20,7 +21,7 @@ CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' 
        "form-action 'self'; frame-ancestors 'none'")
 
 
-def create_app(config=None, *, service=None, testing=False):
+def create_app(config=None, *, service=None, utilities=None, testing=False):
     config = config or WebConfig.from_env()
     app = Flask(__name__)
     app.config.update(
@@ -37,6 +38,7 @@ def create_app(config=None, *, service=None, testing=False):
     )
     app.json.sort_keys = False
     app.extensions['eli_robot'] = service or create_service(config.backend)
+    app.extensions['eli_utilities'] = utilities if utilities is not None else UtilityService()
     app.extensions['eli_login_throttle'] = auth.LoginThrottle()
 
     @app.before_request

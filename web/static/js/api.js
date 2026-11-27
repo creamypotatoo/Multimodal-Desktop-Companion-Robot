@@ -12,9 +12,9 @@ export class ApiError extends Error {
   }
 }
 
-async function request(method, path, body) {
+async function request(method, path, body, signal) {
   const headers = { Accept: 'application/json' };
-  const init = { method, headers, credentials: 'same-origin', cache: 'no-store' };
+  const init = { method, headers, credentials: 'same-origin', cache: 'no-store', signal };
   if (method !== 'GET') {
     headers['X-CSRF-Token'] = csrf();
     if (body !== undefined) {
@@ -44,8 +44,8 @@ async function request(method, path, body) {
 }
 
 export const api = {
-  get: (path) => request('GET', path),
-  put: (path, body) => request('PUT', path, body),
-  post: (path, body) => request('POST', path, body ?? {}),
+  get: (path, signal) => request('GET', path, undefined, signal),
+  put: (path, body, signal) => request('PUT', path, body, signal),
+  post: (path, body, signal) => request('POST', path, body ?? {}, signal),
   patch: (path, body) => request('PATCH', path, body),
 };

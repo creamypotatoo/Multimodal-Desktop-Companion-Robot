@@ -1,10 +1,10 @@
 """REST API (``/api/v1``). Every route requires login; state changes need CSRF.
 
-Handlers only parse JSON and delegate to the configured ``RobotService``, so a
-future real-robot service plugs in without changing routes or the frontend.
+Handlers parse JSON and delegate to the configured robot and utility services.
 """
 from flask import Blueprint, current_app, request
 
+from productivity import UtilityError
 from web.auth import login_required
 from web.responses import error, ok
 from web.services import ServiceError
@@ -144,3 +144,39 @@ def perception():
 @bp.get('/diagnostics')
 def diagnostics():
     return ok(robot().diagnostics())
+
+
+def utilities():
+    return current_app.extensions['eli_utilities']
+
+
+@bp.errorhandler(UtilityError)
+def utility_error(exc):
+    code = {400: 'validation_error', 404: 'not_found', 409: 'conflict'}[exc.status]
+    return error(code, str(exc), exc.status, exc.field)
+
+
+@bp.get('/utilities')
+def utility_states():
+    return ok(utilities().snapshot())
+
+
+@bp.get('/utilities/events')
+def utility_events():
+    after = request.args.get('after', '0')
+    if len(after) > 20 or not after.isascii() or not after.isdecimal():
+        raise BadRequest('after must be a non-negative event ID', field='after')
+    return ok(utilities().notifications(int(after)))
+
+
+@bp.put('/utilities/<name>/settings')
+def utility_settings(name):
+    return ok(utilities().configure(name, body()))
+
+
+@bp.post('/utilities/<name>/actions')
+def utility_action(name):
+    data = body('action', optional=('duration',))
+    if 'duration' in data and data['duration'] is None:
+        raise BadRequest('duration must be an integer', field='duration')
+    return ok(utilities().act(name, data['action'], duration=data.get('duration')))

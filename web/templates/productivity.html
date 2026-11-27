@@ -1,59 +1,98 @@
 {% extends 'base.html' %}
 {% block title %}Focus{% endblock %}
 {% block heading %}Focus tools{% endblock %}
+{% macro ring(name) %}
+<div class="ring" data-ring="{{ name }}">
+  <svg viewBox="0 0 120 120" aria-hidden="true">
+    <circle class="ring__track" cx="60" cy="60" r="54"/>
+    <circle class="ring__bar" cx="60" cy="60" r="54" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/>
+  </svg>
+  <span class="ring__time" data-display="{{ name }}" role="timer">--:--</span>
+</div>
+{% endmacro %}
+{% macro number(name, label, min, max) %}
+<label class="field field--inline"><span class="field__label">{{ label }}</span>
+  <input class="input input--num" name="{{ name }}" type="number" min="{{ min }}" max="{{ max }}" required>
+</label>
+{% endmacro %}
+{% macro button(action, label, primary=false) %}
+<button class="btn {{ 'btn--primary' if primary else 'btn--ghost' }}" type="button" data-action="{{ action }}">{{ label }}</button>
+{% endmacro %}
 {% block content %}
 <div class="tabs" role="tablist" aria-label="Focus tools">
-  <button class="tab is-active" role="tab" id="tab-timer" aria-controls="panel-timer" aria-selected="true" type="button">Timer</button>
-  <button class="tab" role="tab" id="tab-stopwatch" aria-controls="panel-stopwatch" aria-selected="false" tabindex="-1" type="button">Stopwatch</button>
-  <button class="tab" role="tab" id="tab-pomodoro" aria-controls="panel-pomodoro" aria-selected="false" tabindex="-1" type="button">Pomodoro</button>
+  {% for name, label in [('timer', 'Timer'), ('stopwatch', 'Stopwatch'), ('pomodoro', 'Pomodoro')] %}
+  <button class="tab{{ ' is-active' if loop.first }}" role="tab" id="tab-{{ name }}" aria-controls="panel-{{ name }}"
+    aria-selected="{{ 'true' if loop.first else 'false' }}" tabindex="{{ 0 if loop.first else -1 }}" type="button">{{ label }}</button>
+  {% endfor %}
 </div>
-<p class="hint">Timers run in this browser tab. They don't talk to the robot yet.</p>
+<p class="hint" data-utility-connection role="status">Connecting to Eli…</p>
 
-<section class="card card--glow tool" id="panel-timer" role="tabpanel" aria-labelledby="tab-timer">
-  <div class="ring" data-ring="timer">
-    <svg viewBox="0 0 120 120" aria-hidden="true"><circle class="ring__track" cx="60" cy="60" r="54"/><circle class="ring__bar" cx="60" cy="60" r="54"/></svg>
-    <span class="ring__time" data-display="timer" role="timer" aria-live="off">05:00</span>
-  </div>
-  <div class="presets" role="group" aria-label="Timer presets">
-    <button class="chip" type="button" data-preset="60">1 min</button>
-    <button class="chip is-active" type="button" data-preset="300">5 min</button>
-    <button class="chip" type="button" data-preset="600">10 min</button>
-    <button class="chip" type="button" data-preset="900">15 min</button>
-    <button class="chip" type="button" data-preset="1800">30 min</button>
-  </div>
-  <div class="custom-time">
-    <label class="field field--inline"><span class="field__label">Min</span><input class="input input--num" type="number" min="0" max="180" value="5" data-custom="min"></label>
-    <label class="field field--inline"><span class="field__label">Sec</span><input class="input input--num" type="number" min="0" max="59" value="0" data-custom="sec"></label>
-    <button class="btn btn--ghost btn--sm" type="button" data-timer="set">Set</button>
-  </div>
-  <div class="controls">
-    <button class="btn btn--primary" type="button" data-timer="toggle"><svg class="icon" aria-hidden="true"><use href="#i-play"></use></svg><span>Start</span></button>
-    <button class="btn btn--ghost" type="button" data-timer="reset"><svg class="icon" aria-hidden="true"><use href="#i-reset"></use></svg><span>Reset</span></button>
+<section class="card card--glow tool" id="panel-timer" data-utility="timer" role="tabpanel" aria-labelledby="tab-timer">
+  <p class="phase" data-state></p>
+  {{ ring('timer') }}
+  <p class="muted" data-progress></p>
+  <fieldset disabled>
+    <legend class="sr-only">Timer controls</legend>
+    <form class="custom-time" data-settings>
+      {{ number('hours', 'Hours', 0, 23) }}
+      {{ number('minutes', 'Minutes', 0, 59) }}
+      {{ number('seconds', 'Seconds', 0, 59) }}
+      <button class="btn btn--ghost btn--sm" type="submit">Set duration</button>
+    </form>
+    <div class="presets" role="group" aria-label="Timer presets">
+      {% for minutes in [1, 5, 10, 15, 25, 30, 60] %}
+      <button class="chip" type="button" data-preset="{{ minutes * 60 }}" aria-pressed="false">{{ minutes }} min</button>
+      {% endfor %}
+    </div>
+    <div class="controls">
+      {{ button('toggle', 'Start', true) }}{{ button('reset', 'Reset') }}{{ button('cancel', 'Cancel') }}
+    </div>
+  </fieldset>
+</section>
+
+<section class="card card--glow tool" id="panel-stopwatch" data-utility="stopwatch" role="tabpanel" aria-labelledby="tab-stopwatch" hidden>
+  <p class="phase" data-state></p>
+  <div class="big-time" data-display="stopwatch" role="timer">--:--</div>
+  <fieldset disabled>
+    <legend class="sr-only">Stopwatch controls</legend>
+    <div class="controls">
+      {{ button('toggle', 'Start', true) }}{{ button('lap', 'Lap') }}{{ button('reset', 'Reset') }}{{ button('clear_laps', 'Clear laps') }}
+    </div>
+  </fieldset>
+  <p class="muted" data-lap-summary>No laps recorded.</p>
+  <div class="lap-table" hidden>
+    <table>
+      <caption class="sr-only">Stopwatch laps</caption>
+      <thead><tr><th scope="col">Lap</th><th scope="col">Duration</th><th scope="col">Total</th></tr></thead>
+      <tbody data-laps></tbody>
+    </table>
   </div>
 </section>
 
-<section class="card card--glow tool" id="panel-stopwatch" role="tabpanel" aria-labelledby="tab-stopwatch" hidden>
-  <div class="big-time" data-display="stopwatch" role="timer">00:00.00</div>
-  <div class="controls">
-    <button class="btn btn--primary" type="button" data-sw="toggle"><svg class="icon" aria-hidden="true"><use href="#i-play"></use></svg><span>Start</span></button>
-    <button class="btn btn--ghost" type="button" data-sw="lap" disabled>Lap</button>
-    <button class="btn btn--ghost" type="button" data-sw="reset"><svg class="icon" aria-hidden="true"><use href="#i-reset"></use></svg><span>Reset</span></button>
-  </div>
-  <ol class="laps" data-laps aria-label="Laps"></ol>
+<section class="card card--glow tool" id="panel-pomodoro" data-utility="pomodoro" role="tabpanel" aria-labelledby="tab-pomodoro" hidden>
+  <p class="phase"><span data-phase></span> <span data-state></span></p>
+  {{ ring('pomodoro') }}
+  <p class="muted" data-progress></p>
+  <div class="session-dots" data-session-dots aria-hidden="true"></div>
+  <p class="muted" data-sessions></p>
+  <fieldset disabled>
+    <legend class="sr-only">Pomodoro controls</legend>
+    <div class="controls">
+      {{ button('toggle', 'Start', true) }}{{ button('skip', 'Skip phase') }}{{ button('reset', 'Reset') }}
+    </div>
+    <form class="custom-time" data-settings>
+      {{ number('focus', 'Focus (min)', 1, 90) }}
+      {{ number('short_break', 'Short break (min)', 1, 30) }}
+      {{ number('long_break', 'Long break (min)', 1, 60) }}
+      {{ number('long_every', 'Sessions per cycle', 1, 12) }}
+      <label><input name="automatic" type="checkbox"> Auto-start next phase</label>
+      <button class="btn btn--ghost btn--sm" type="submit">Save settings</button>
+    </form>
+  </fieldset>
 </section>
 
-<section class="card card--glow tool" id="panel-pomodoro" role="tabpanel" aria-labelledby="tab-pomodoro" hidden>
-  <p class="phase" data-pomo="phase">Focus</p>
-  <div class="ring ring--focus" data-ring="pomodoro">
-    <svg viewBox="0 0 120 120" aria-hidden="true"><circle class="ring__track" cx="60" cy="60" r="54"/><circle class="ring__bar" cx="60" cy="60" r="54"/></svg>
-    <span class="ring__time" data-display="pomodoro" role="timer">25:00</span>
-  </div>
-  <p class="muted">Round <strong data-pomo="round">1</strong> of 4 · <span data-pomo="done">0</span> completed today</p>
-  <div class="controls">
-    <button class="btn btn--primary" type="button" data-pomo-btn="toggle"><svg class="icon" aria-hidden="true"><use href="#i-play"></use></svg><span>Start</span></button>
-    <button class="btn btn--ghost" type="button" data-pomo-btn="skip">Skip</button>
-    <button class="btn btn--ghost" type="button" data-pomo-btn="reset"><svg class="icon" aria-hidden="true"><use href="#i-reset"></use></svg><span>Reset</span></button>
-  </div>
-  <p class="hint">25 min focus · 5 min break · 15 min long break after 4 rounds.</p>
-</section>
+<div class="controls">
+  <button class="btn btn--ghost btn--sm" type="button" data-utility-notifications hidden>Enable browser notifications</button>
+  <button class="btn btn--ghost btn--sm" type="button" data-utility-audio aria-pressed="false" hidden>Completion sound off</button>
+</div>
 {% endblock %}

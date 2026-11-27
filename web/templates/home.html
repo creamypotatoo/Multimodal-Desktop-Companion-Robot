@@ -17,6 +17,19 @@
   </div>
 </section>
 
+<section class="card active-utilities" aria-labelledby="active-utilities-title" hidden>
+  <div class="card__head">
+    <h2 id="active-utilities-title" class="card__title">Active utilities</h2>
+    <a href="{{ url_for('pages.productivity') }}">Focus tools</a>
+  </div>
+  <p class="hint" data-utility-connection role="status"></p>
+  <ul>
+    {% for name in ['timer', 'stopwatch', 'pomodoro'] %}
+    <li data-active-utility="{{ name }}" hidden><span></span><time></time></li>
+    {% endfor %}
+  </ul>
+</section>
+
 <section aria-labelledby="shortcuts-title">
   <h2 id="shortcuts-title" class="section-title">Shortcuts</h2>
   <div class="tiles">

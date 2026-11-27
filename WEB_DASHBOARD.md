@@ -1,7 +1,8 @@
-# Eli web dashboard (Phase 1: mock mode)
+# Eli web dashboard
 
-A lightweight, mobile-first control dashboard for Eli, served by Flask. In
-Phase 1 every robot action goes to an **in-memory mock robot**. The dashboard
+A lightweight, mobile-first control dashboard for Eli, served by Flask.
+Robot actions go to an **in-memory mock robot**. Productivity utilities run
+in a separate shared service inside the dashboard process. The dashboard
 never opens GPIO, SPI, the camera, the microphone, motors or the ESP32, and it
 does not import or change the AI pipeline in `main.py`. The two run
 independently.
@@ -37,6 +38,7 @@ web/config.py             WebConfig.from_env()
 | `web/pages.py` | Page routes and navigation definition |
 | `web/responses.py` | `{"ok": ..., "data"/"error": ...}` envelopes |
 | `web/services/` | `RobotService` contract, mock implementation and host metrics |
+| `productivity/` | Hardware-independent timing models, synchronized commands, scheduler and event feed |
 | `web/hash_password.py` | Generates `ELI_WEB_PASSWORD_HASH` |
 | `web/templates/` | Jinja templates (base layout, login, seven pages) |
 | `web/static/css/dashboard.css` | Theme and responsive layout |
@@ -67,7 +69,7 @@ From the repository root in PowerShell:
 
 ```powershell
 python -m pip install -r requirements-web.txt
-python -m web
+python -m web --host 127.0.0.1 --port 5000
 ```
 
 Open <http://localhost:5000/>. With no password configured, a **one-time
@@ -82,7 +84,9 @@ python -m web
 Run the tests:
 
 ```powershell
-python -m unittest tests.test_web -v
+python -m unittest discover -s tests -p test_web.py
+python -m unittest discover -s tests -p test_productivity.py
+python -m unittest discover -s tests
 ```
 
 ## Raspberry Pi launch
@@ -95,7 +99,7 @@ python -m web                 # localhost only: http://localhost:5000/
 ```
 
 The dashboard is a separate process. `python main.py --headless` keeps working
-as before and isn't affected. In Phase 1 the two processes don't communicate.
+as before. The two processes currently run independently.
 
 ## Environment variables
 
@@ -217,10 +221,10 @@ CSRF token. `tests/test_web.py` shows every endpoint in use.
 
 | Page | Contents |
 |------|----------|
-| Home | Animated eye preview, status, shortcuts, recent simulated commands |
+| Home | Animated eye preview, active utilities, status, shortcuts, recent simulated commands |
 | Companion | Start/end simulated conversation; face recognition, microphone and AI status |
 | Movement | D-pad (also arrow keys/WASD, Space = stop), speed, head servos, emergency stop |
-| Focus | Countdown timer, stopwatch with laps, Pomodoro (25/5/15). Runs in the browser |
+| Focus | Shared countdown, stopwatch with lap splits and extrema, configurable Pomodoro |
 | Perception | Camera placeholder and recognition status |
 | Diagnostics | Host CPU, RAM, temperature, uptime; ESP32 and peripheral status (refreshes every 3 s) |
 | Settings | Expression, eye colour, animation speed, operating mode, volume |
@@ -229,9 +233,74 @@ Mobile uses a bottom bar (Home, Companion, Movement, Focus, Settings; the
 other pages are reachable from Home). At 900 px and wider a sidebar is shown.
 Animations respect `prefers-reduced-motion`.
 
+## Productivity utilities
+
+One `UtilityService` instance owns all three timers per server process.
+It serializes reads, actions, settings and deadline processing under a
+condition lock. Countdown and Pomodoro use monotonic deadlines. The stopwatch
+adds time from running intervals and excludes paused time. The background
+worker sleeps until the nearest deadline or until a command changes the
+schedule. It emits each completion once and anchors automatic Pomodoro phases
+to the previous deadline, so late wakeups do not shift the schedule.
+
+`python -m web` starts one worker and stops it when the server exits.
+Embedders using `create_app()` directly should start and stop the worker from
+the server lifecycle, using `app.extensions['eli_utilities']`. Use **one process**
+with threads. Multiple workers would have independent utility state and event
+streams. The browser can refresh, close, or disconnect while the server
+continues running. Restarting the process resets all utilities, settings,
+lap history and events.
+
+### Utility API
+
+These paths are relative to `/api/v1`. All require login. PUT and POST also
+require `X-CSRF-Token` and JSON. Invalid fields return 400, unsupported
+utility resources return 404, and invalid state transitions return 409.
+
+| Method and path | Request or response |
+|---|---|
+| GET `/utilities` | Current snapshots, timer presets, and recent completion events |
+| PUT `/utilities/timer/settings` | `{"duration":300}` in seconds, from 1 to 86,399 |
+| PUT `/utilities/pomodoro/settings` | Partial settings: `focus` 1–90 min, `short_break` 1–30 min, `long_break` 1–60 min, `long_every` 1–12 sessions, `automatic` boolean |
+| POST `/utilities/timer/actions` | `{"action":"start","duration":600}`. Duration is optional on start. Also: pause, resume, reset, cancel |
+| POST `/utilities/stopwatch/actions` | start, pause, resume, reset, lap, clear_laps |
+| POST `/utilities/pomodoro/actions` | start, pause, resume, reset, skip |
+| GET `/utilities/events?after=0` | Stream identifier, latest cursor and retained events with a greater ID |
+
+Settings can be edited while the corresponding utility is idle or completed.
+Timer reset keeps its duration. Cancel clears it. Stopwatch retains the
+latest 99 lap rows and tracks extrema across all laps since reset or clear.
+Pomodoro defaults to 25/5/15 minutes, with a long break after four completed
+focus sessions. By default, each new phase waits for Start. Auto-start applies
+to both focus and breaks. Skip advances without crediting the phase and reset
+clears session totals while keeping settings.
+
+### Notifications and future voice integration
+
+Home and Focus poll every two seconds while visible and refresh on
+reconnection and visibility changes. Local interpolation only paints displays.
+Completion events (`timer_done`, `focus_done`, `break_done`) carry stream-local
+IDs and Pomodoro phase details. The service retains the latest 128 events.
+A tab starts at the current cursor on its first sync and remembers its
+cursor across dashboard navigation and refreshes. Each tab shows in-page
+alerts for newly observed events.
+
+Completion sound is optional and enabled by a click for the current Focus
+page. Browser notifications require a secure context (such as localhost),
+browser support and permission explicitly requested from Focus. Some mobile
+browsers require a service worker for system notifications. Background tabs
+can be suspended and deliver alerts on return. Closing the browser stops
+browser alerts even though the server timers keep running.
+
+A future controller can use the same `UtilityService.act()`,
+`configure()` and `snapshot()` methods directly when hosted with the
+service. Its notification consumer can implement against the
+`NotificationSource` protocol and track a stream and cursor. Voice parsing,
+speaker playback and TTS are future integrations.
+
 ## Known limitations
 
-- **Everything is simulated.** Mode, expression, volume, eye colour, movement,
+- **Robot commands are simulated.** Mode, expression, volume, eye colour, movement,
   servos and conversation state live only in the dashboard process and reset
   when it restarts. They don't reach the TFT, speaker, motors or `main.py`.
 - Face recognition, microphone, AI (Ollama) status, camera, ESP32 and sensors
@@ -239,7 +308,6 @@ Animations respect `prefers-reduced-motion`.
 - Host metrics come from Linux `/proc` and the thermal zone. On Windows they
   show as unavailable, because no extra dependency such as `psutil` is used. The
   first CPU reading after startup is unavailable until a second sample exists.
-- Focus timers run in the browser tab and don't sync between devices.
 - Login throttling and sessions are per process. With no
   `ELI_WEB_SECRET_KEY`, sessions end on restart.
 - Flask's built-in server is used. It's fine for one operator on a home LAN, but
