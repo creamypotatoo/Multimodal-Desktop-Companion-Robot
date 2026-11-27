@@ -92,7 +92,6 @@ def build_parser():
     parser.add_argument('--scale', type=int, default=2, help='preview window zoom')
     parser.add_argument('--simulate-conversation', action='store_true',
                         help='cycle idle/listening/thinking/speaking every 3 s')
-    parser.add_argument('--mute', action='store_true', help='print utility alerts instead of speaking')
     parser.add_argument('--tour', action='store_true',
                         help='tap through every screen automatically and exit (mock touch only)')
     return parser
@@ -121,10 +120,7 @@ def main(argv=None):
         return 1
     fsm = RobotStateMachine()
     attach(fsm, engine, log=print)
-    from display.ui.alerts import AlertPlayer
-    alerts = AlertPlayer(engine, fsm, (lambda text: None) if args.mute else None).start()
-    ui = UIManager(size=(display.width, display.height), on_change=engine.request_frame,
-                   on_event=alerts.handle)
+    ui = UIManager(size=(display.width, display.height), on_change=engine.request_frame)
     if touch_name == 'mock':
         from hardware.mock_hardware import MockTouch
         touch = MockTouch(calibration=calibration)
@@ -191,7 +187,6 @@ def main(argv=None):
     finally:
         stop.set()
         controller.stop()        # before the display: touch may share its SPI bus
-        alerts.stop()
         engine.stop()
         print('[UI] Stopped.', flush=True)
     if engine.last_error is not None:

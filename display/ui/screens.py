@@ -51,32 +51,15 @@ def status_style(expression):
 
 
 class Screen:
-    """Static by default. Live screens override ``view``/``buttons_for``/
-    ``draw_region``/``handle``: ``view(now)`` returns ``(mode, {region: value})``;
-    a new mode redraws the whole screen, a changed value only its region in
-    ``regions``. Buttons with action ``do:<command>`` call ``handle``."""
     id = ''
     title = ''
     buttons = ()
-    regions = {}
     status_rect = None     # region redrawn when the conversation status changes
 
-    def view(self, now):
-        return None
-
-    def buttons_for(self, mode):
-        return self.buttons
-
-    def draw_region(self, draw, theme, name, value):
-        pass
-
-    def handle(self, command, now):
-        raise ValueError(f'{self.id} has no command {command!r}')
-
-    def draw(self, draw, theme, status, mode=None):
+    def draw(self, draw, theme, status):
         """Paint the whole screen (buttons unpressed)."""
         draw.rectangle((0, 0, WIDTH - 1, HEIGHT - 1), fill=theme.background)
-        for button in self.buttons_for(mode):
+        for button in self.buttons:
             draw_button(draw, button, False, theme)
         if self.status_rect:
             self.draw_status(draw, theme, status)
@@ -100,7 +83,7 @@ class EyesScreen(Screen):
     title = 'Companion'
     buttons = (Button('open-menu', (0, 0, WIDTH, HEIGHT), action=f'open:{MENU}', style='hidden'),)
 
-    def draw(self, draw, theme, status, mode=None):  # the EyeEngine renders this screen
+    def draw(self, draw, theme, status):  # the EyeEngine renders this screen
         pass
 
 
@@ -119,8 +102,8 @@ class MenuScreen(Screen):
                    u.icon, u.accent, 'tile')
             for u, rect in zip(utilities, cells))
 
-    def draw(self, draw, theme, status, mode=None):
-        super().draw(draw, theme, status, mode)
+    def draw(self, draw, theme, status):
+        super().draw(draw, theme, status)
         draw.ellipse((14, 18, 22, 26), fill=theme.accent)
         right = text_left(draw, (30, 22), 'Eli', font(19, True), theme.text)
         text_left(draw, (right + 8, 23), 'Menu', font(14), theme.muted)
@@ -138,8 +121,8 @@ class PlaceholderScreen(Screen):
             Button('home', (164, 184, 312, 232), 'Companion', 'home', 'companion', THEME.accent, 'bar'),
         )
 
-    def draw(self, draw, theme, status, mode=None):
-        super().draw(draw, theme, status, mode)
+    def draw(self, draw, theme, status):
+        super().draw(draw, theme, status)
         u = self.utility
         text_center(draw, (WIDTH / 2, 22), u.title, font(19, True), theme.text)
         draw.rounded_rectangle((WIDTH / 2 - 14, 38, WIDTH / 2 + 14, 40), radius=1, fill=u.accent)
@@ -178,15 +161,7 @@ class ScreenRegistry:
         return tuple(self._screens)
 
 
-def default_registry(utilities=UTILITIES, apps=None):
-    """Eyes, menu, the live Timer/Stopwatch/Focus screens (when ``apps`` is
-    given) and labelled placeholders for the remaining utilities."""
+def default_registry(utilities=UTILITIES):
     screens = [EyesScreen(), MenuScreen(utilities)]
-    live = {}
-    if apps is not None:
-        from display.ui.app_screens import app_screens
-        live = {screen.id: screen for screen in app_screens(apps, {u.id: u for u in utilities})}
-    for u in utilities:
-        if u.id != 'companion':
-            screens.append(live.pop(u.id, None) or PlaceholderScreen(u))
-    return ScreenRegistry(screens + list(live.values()))
+    screens += [PlaceholderScreen(u) for u in utilities if u.id != 'companion']
+    return ScreenRegistry(screens)

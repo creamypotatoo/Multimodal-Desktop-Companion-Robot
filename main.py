@@ -77,7 +77,7 @@ def main(argv=None):
         attach(fsm, eyes)
         # Optional touchscreen menu (ELI_TOUCH_BACKEND); needs the eyes, and
         # failing touch hardware never affects them or the conversation.
-        touch = start_robot_touch(eyes, fsm=fsm)
+        touch = start_robot_touch(eyes)
         try:
             cascade, recognize = load_vision()
         except Exception as exc:

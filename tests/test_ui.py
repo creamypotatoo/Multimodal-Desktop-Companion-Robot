@@ -89,14 +89,10 @@ class WidgetTests(unittest.TestCase):
             x0, y0, x1, y1 = button.rect
             self.assertTrue(0 <= x0 < x1 <= 320 and 0 <= y0 < y1 <= 240)
             self.assertGreaterEqual(min(x1 - x0, y1 - y0), 56)
-        registry = UIManager().registry
-        for screen_id in registry.ids():
-            screen = registry.get(screen_id)
-            for mode_buttons in [screen.buttons] + [screen.nav + c for c in getattr(screen, '_controls', {}).values()]:
-                for button in mode_buttons:
-                    x0, y0, x1, y1 = button.rect
-                    self.assertTrue(0 <= x0 < x1 <= 320 and 0 <= y0 < y1 <= 240, button)
-                    self.assertGreaterEqual(min(x1 - x0, y1 - y0), 38, (screen_id, button.id))
+        for u in UTILITIES:
+            if u.id != 'companion':
+                for button in default_registry().get(u.id).buttons:
+                    self.assertGreaterEqual(button.rect[3] - button.rect[1], 44)
 
     def test_every_icon_draws(self):
         from PIL import Image, ImageDraw
@@ -134,7 +130,7 @@ class NavigationTests(unittest.TestCase):
                 self.assertEqual(self.ui.stack, (EYES, MENU, utility.id))
                 screen = self.ui.registry.get(utility.id)
                 self.assertEqual(screen.title, utility.title)
-                self.assertLessEqual({'back', 'home'}, {b.action for b in screen.buttons})
+                self.assertEqual({b.action for b in screen.buttons}, {'back', 'home'})
                 press(self.ui, 'back', 2.0)
                 self.assertEqual(self.ui.current, MENU)
                 press(self.ui, utility.id, 3.0)
