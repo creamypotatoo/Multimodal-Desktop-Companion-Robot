@@ -24,6 +24,8 @@ downloads models at startup or during inference.
 $env:ELI_WHISPER_MODEL = 'D:\Models\faster-whisper-small'
 $env:ELI_WHISPER_BEAM_SIZE = '5'
 $env:ELI_WHISPER_PROMPT = 'Eli is a personal robot assistant.'
+$env:ELI_AUDIO_INPUT = 'default'
+$env:ELI_AUDIO_SAMPLE_RATE = '16000'
 & $py -m web --unified --audio windows --ai mock --wake --announce --host 127.0.0.1 --port 5000
 ```
 
@@ -117,8 +119,8 @@ before proceeding. On Pi it terminates the playback process group, including
 the existing synthesis and player commands. If exit cannot be confirmed,
 the runtime reports an audio fault and suspends capture and playback.
 Already-running STT and AI calls may take time to return. Their stale
-results cannot be spoken. OS and device buffering still require physical
-verification.
+results cannot be spoken. Interruption was verified on the Windows bench
+setup. Output buffering can vary on other devices.
 
 Audio is half-duplex. Microphone capture stays closed during playback and
 the short echo-settle period. You cannot use a voice interruption while
@@ -157,12 +159,13 @@ then ask for a short timer. During a longer response, click Stop speaking
 and verify audible interruption. Verify Sleep with wake listening both off
 and explicitly enabled. These steps require human observation.
 
-Manual Windows verification confirmed microphone capture, dashboard-started
-conversation, deterministic timer commands, and “Hey Eli” activation with
-Whisper Small. Audible interruption on the Windows output device, end-to-end
-conversation with real Ollama, and Pi audio still require physical verification.
-For Ollama, confirm Diagnostics reports “Ollama responded” during the session
-so a fallback response does not count as a successful live backend test.
+Manual Windows verification confirmed microphone capture and recognition
+with Whisper Small, dashboard-started conversation, “Hey Eli” activation,
+voice productivity commands, a real Ollama conversation with `qwen3:1.7b`,
+and audible speech playback and interruption. On future Ollama checks,
+look for “Ollama responded” in Diagnostics to distinguish a live response
+from fallback. Raspberry Pi audio and behavior on other physical devices
+remain unverified. Physical hardware was unavailable during checkpoint review.
 
 If capture fails, check Windows microphone privacy permissions and the input
 selection. Try the system default at 16 kHz. If STT fails, check the local model
@@ -184,5 +187,6 @@ pin `av<19` in that tool's environment. Eli does not change package versions.
 
 ```powershell
 & $py -m unittest discover -s tests -p test_voice_runtime.py
+& $py -m unittest discover -s tests -p test_windows_voice.py
 & $py -m unittest discover -s tests
 ```

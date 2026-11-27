@@ -7,5 +7,29 @@ future Raspberry Pi setup, [dashboard setup](WEB_DASHBOARD.md) for authenticatio
 and networking, and [controller architecture](CONTROLLER_ARCHITECTURE.md) for
 mode and movement policy.
 
-See [Voice and audio](VOICE_AUDIO.md) to set up mock audio, Windows microphone
-and speech, wake phrases, and optional local Ollama.
+Phase 5 was manually verified on Windows with Whisper Small and local Ollama
+`qwen3:1.7b`. The checks covered microphone capture, dashboard-started
+conversation, “Hey Eli” activation, voice productivity commands, speech
+playback, and interruption.
+
+## Resume on Windows
+
+Run from this repository in PowerShell. If Ollama is stopped, run
+`ollama serve` in a separate terminal. Use the default loopback address
+and an already installed `qwen3:1.7b` model. Adjust the Whisper Small path
+if your local model directory differs.
+
+```powershell
+$py = "$env:LOCALAPPDATA\Python\pythoncore-3.12-64\python.exe"
+$env:ELI_WHISPER_MODEL = 'D:\Models\faster-whisper-small'
+$env:ELI_WHISPER_BEAM_SIZE = '5'
+$env:ELI_WHISPER_PROMPT = 'Eli is a personal robot assistant.'
+$env:ELI_AUDIO_INPUT = 'default'
+$env:ELI_AUDIO_SAMPLE_RATE = '16000'
+$env:ELI_OLLAMA_URL = 'http://127.0.0.1:11434'
+$env:ELI_OLLAMA_MODEL = 'qwen3:1.7b'
+& $py -m web --unified --audio windows --ai ollama --wake --announce --host 127.0.0.1 --port 5000
+```
+
+Sign in at `http://127.0.0.1:5000/`. See [Voice and audio](VOICE_AUDIO.md) for
+dependency installation, mock launches, and the verification checklist.
