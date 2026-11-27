@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import eye_preview %}
+{% block title %}Settings{% endblock %}
+{% block heading %}Settings{% endblock %}
+{% block content %}
+<div class="grid grid--2">
+  <section class="card card--glow" aria-labelledby="eyes-title">
+    <div class="card__head">
+      <h2 id="eyes-title" class="card__title">Eyes</h2>
+      <span class="badge badge--simulated">Simulated · TFT not linked</span>
+    </div>
+    {{ eye_preview('md') }}
+    <fieldset class="fieldset">
+      <legend class="field__label">Expression</legend>
+      <div class="chips" data-expressions role="radiogroup" aria-label="Expression"></div>
+    </fieldset>
+    <fieldset class="fieldset">
+      <legend class="field__label">Eye color</legend>
+      <div class="swatches" role="group" aria-label="Color presets">
+        <button class="swatch swatch--cyan" type="button" data-color="#00E5FF" aria-label="Cyan"></button>
+        <button class="swatch swatch--blue" type="button" data-color="#3D8BFF" aria-label="Blue"></button>
+        <button class="swatch swatch--violet" type="button" data-color="#B388FF" aria-label="Violet"></button>
+        <button class="swatch swatch--green" type="button" data-color="#3DDC97" aria-label="Green"></button>
+        <button class="swatch swatch--amber" type="button" data-color="#FFB547" aria-label="Amber"></button>
+        <button class="swatch swatch--pink" type="button" data-color="#FF6FAE" aria-label="Pink"></button>
+        <label class="swatch swatch--custom" title="Custom color">
+          <span class="sr-only">Custom color</span>
+          <input type="color" data-input="eye_color" value="#00e5ff">
+        </label>
+      </div>
+    </fieldset>
+    <label class="field">
+      <span class="field__row"><span class="field__label">Animation speed</span><output class="field__value" data-out="animation_speed">—</output></span>
+      <input class="range" type="range" min="0.5" max="2" step="0.1" data-input="animation_speed">
+    </label>
+  </section>
+
+  <div class="stack">
+    <section class="card" aria-labelledby="mode-title">
+      <div class="card__head">
+        <h2 id="mode-title" class="card__title">Operating mode</h2>
+        <span class="badge badge--simulated">Simulated</span>
+      </div>
+      <div class="segmented" role="radiogroup" aria-label="Operating mode" data-modes></div>
+      <p class="hint" data-field="mode-hint"></p>
+    </section>
+
+    <section class="card" aria-labelledby="audio-title">
+      <div class="card__head">
+        <h2 id="audio-title" class="card__title">Audio</h2>
+        <span class="badge badge--simulated">Simulated · speaker not linked</span>
+      </div>
+      <label class="field">
+        <span class="field__row"><span class="field__label">Volume</span><output class="field__value" data-out="volume">—</output></span>
+        <input class="range" type="range" min="0" max="100" step="1" data-input="volume">
+      </label>
+    </section>
+  </div>
+</div>
+{% endblock %}

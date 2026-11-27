@@ -1,0 +1,22 @@
+{% macro badge(id, initial='simulated') -%}
+<span class="badge badge--{{ initial }}" data-availability="{{ id }}">{{ initial|capitalize }}</span>
+{%- endmacro %}
+
+{% macro status_row(key, icon, label) -%}
+<li class="status-row" data-status="{{ key }}">
+  <span class="status-row__icon"><svg class="icon" aria-hidden="true"><use href="#i-{{ icon }}"></use></svg></span>
+  <span class="status-row__body">
+    <span class="status-row__label">{{ label }}</span>
+    <span class="status-row__detail" data-detail>Loading…</span>
+  </span>
+  <span class="badge badge--pending" data-badge>…</span>
+</li>
+{%- endmacro %}
+
+{% macro eye_preview(size='lg') -%}
+<div class="eye-stage eye-stage--{{ size }}">
+  <canvas class="eye-canvas" data-eye-preview width="320" height="240"
+          role="img" aria-label="Animated preview of Eli's eyes"></canvas>
+  <span class="eye-stage__label" data-eye-label>idle</span>
+</div>
+{%- endmacro %}

@@ -1,0 +1,61 @@
+{% extends 'base.html' %}
+{% block title %}Movement{% endblock %}
+{% block heading %}Movement{% endblock %}
+{% block content %}
+<div class="notice notice--warn mode-gate" data-mode-gate hidden>
+  <span>Movement controls need <strong>manual</strong> mode.</span>
+  <button class="btn btn--sm btn--primary" type="button" data-action="manual">Switch to manual</button>
+</div>
+
+<div class="grid grid--2">
+  <section class="card card--glow" aria-labelledby="drive-title">
+    <div class="card__head">
+      <h2 id="drive-title" class="card__title">Drive</h2>
+      <span class="badge badge--simulated">Simulated · no motors</span>
+    </div>
+    <div class="dpad" role="group" aria-label="Direction controls">
+      <button class="dpad__btn dpad__btn--up" type="button" data-move="forward" aria-label="Forward">
+        <svg class="icon" aria-hidden="true"><use href="#i-up"></use></svg></button>
+      <button class="dpad__btn dpad__btn--left" type="button" data-move="left" aria-label="Turn left">
+        <svg class="icon icon--rot-l" aria-hidden="true"><use href="#i-up"></use></svg></button>
+      <button class="dpad__stop" type="button" data-action="stop" aria-label="Stop">
+        <svg class="icon" aria-hidden="true"><use href="#i-stop"></use></svg><span>STOP</span></button>
+      <button class="dpad__btn dpad__btn--right" type="button" data-move="right" aria-label="Turn right">
+        <svg class="icon icon--rot-r" aria-hidden="true"><use href="#i-up"></use></svg></button>
+      <button class="dpad__btn dpad__btn--down" type="button" data-move="backward" aria-label="Backward">
+        <svg class="icon icon--rot-d" aria-hidden="true"><use href="#i-up"></use></svg></button>
+    </div>
+    <p class="motion-readout" role="status" aria-live="polite" data-field="motion">Stopped</p>
+
+    <label class="field">
+      <span class="field__row"><span class="field__label">Motor speed</span><output class="field__value" data-out="speed">—</output></span>
+      <input class="range" type="range" min="0" max="100" step="5" data-input="speed" aria-describedby="speed-hint">
+      <small id="speed-hint" class="hint">0–100 %. Each press sends a 0.5 s simulated pulse.</small>
+    </label>
+    <p class="hint">Keyboard: arrow keys or W/A/S/D to move, Space to stop.</p>
+  </section>
+
+  <section class="card" aria-labelledby="servo-title">
+    <div class="card__head">
+      <h2 id="servo-title" class="card__title">Head servos</h2>
+      <span class="badge badge--simulated">Simulated · no servos</span>
+    </div>
+    <label class="field">
+      <span class="field__row"><span class="field__label">Pan</span><output class="field__value" data-out="head_pan">—</output></span>
+      <input class="range" type="range" min="0" max="180" step="1" data-servo="head_pan">
+    </label>
+    <label class="field">
+      <span class="field__row"><span class="field__label">Tilt</span><output class="field__value" data-out="head_tilt">—</output></span>
+      <input class="range" type="range" min="45" max="135" step="1" data-servo="head_tilt">
+    </label>
+    <button class="btn btn--ghost" type="button" data-action="center">Center head</button>
+
+    <div class="emergency">
+      <button class="btn btn--danger btn--block btn--lg" type="button" data-action="stop">
+        <svg class="icon" aria-hidden="true"><use href="#i-stop"></use></svg> Emergency stop
+      </button>
+      <small class="hint">Stop works in every mode.</small>
+    </div>
+  </section>
+</div>
+{% endblock %}

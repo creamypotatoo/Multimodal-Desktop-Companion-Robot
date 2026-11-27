@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import eye_preview %}
+{% block title %}Home{% endblock %}
+{% block heading %}Home{% endblock %}
+{% block content %}
+<section class="hero card card--glow" aria-labelledby="hero-title">
+  {{ eye_preview('lg') }}
+  <div class="hero__info">
+    <p class="eyebrow">Companion robot</p>
+    <h2 id="hero-title" class="hero__title">Eli is <span data-field="state-label">…</span></h2>
+    <dl class="stats">
+      <div><dt>Mode</dt><dd data-field="mode">—</dd></div>
+      <div><dt>Expression</dt><dd data-field="expression">—</dd></div>
+      <div><dt>Volume</dt><dd><span data-field="volume">—</span>%</dd></div>
+      <div><dt>Session</dt><dd data-field="uptime">—</dd></div>
+    </dl>
+  </div>
+</section>
+
+<section aria-labelledby="shortcuts-title">
+  <h2 id="shortcuts-title" class="section-title">Shortcuts</h2>
+  <div class="tiles">
+    {% for name, url, label, icon, desc in nav_pages if name != 'home' %}
+    <a class="tile" href="{{ url_for('pages.' ~ name) }}">
+      <span class="tile__icon"><svg class="icon" aria-hidden="true"><use href="#i-{{ icon }}"></use></svg></span>
+      <span class="tile__label">{{ label }}</span>
+      <span class="tile__desc">{{ desc }}</span>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="card" aria-labelledby="activity-title">
+  <div class="card__head">
+    <h2 id="activity-title" class="card__title">Recent simulated commands</h2>
+    <span class="badge badge--simulated">Simulated</span>
+  </div>
+  <ol class="activity" data-activity><li class="muted">No commands yet.</li></ol>
+</section>
+{% endblock %}

@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+{% block title %}Focus{% endblock %}
+{% block heading %}Focus tools{% endblock %}
+{% block content %}
+<div class="tabs" role="tablist" aria-label="Focus tools">
+  <button class="tab is-active" role="tab" id="tab-timer" aria-controls="panel-timer" aria-selected="true" type="button">Timer</button>
+  <button class="tab" role="tab" id="tab-stopwatch" aria-controls="panel-stopwatch" aria-selected="false" tabindex="-1" type="button">Stopwatch</button>
+  <button class="tab" role="tab" id="tab-pomodoro" aria-controls="panel-pomodoro" aria-selected="false" tabindex="-1" type="button">Pomodoro</button>
+</div>
+<p class="hint">Timers run in this browser tab. They don't talk to the robot yet.</p>
+
+<section class="card card--glow tool" id="panel-timer" role="tabpanel" aria-labelledby="tab-timer">
+  <div class="ring" data-ring="timer">
+    <svg viewBox="0 0 120 120" aria-hidden="true"><circle class="ring__track" cx="60" cy="60" r="54"/><circle class="ring__bar" cx="60" cy="60" r="54"/></svg>
+    <span class="ring__time" data-display="timer" role="timer" aria-live="off">05:00</span>
+  </div>
+  <div class="presets" role="group" aria-label="Timer presets">
+    <button class="chip" type="button" data-preset="60">1 min</button>
+    <button class="chip is-active" type="button" data-preset="300">5 min</button>
+    <button class="chip" type="button" data-preset="600">10 min</button>
+    <button class="chip" type="button" data-preset="900">15 min</button>
+    <button class="chip" type="button" data-preset="1800">30 min</button>
+  </div>
+  <div class="custom-time">
+    <label class="field field--inline"><span class="field__label">Min</span><input class="input input--num" type="number" min="0" max="180" value="5" data-custom="min"></label>
+    <label class="field field--inline"><span class="field__label">Sec</span><input class="input input--num" type="number" min="0" max="59" value="0" data-custom="sec"></label>
+    <button class="btn btn--ghost btn--sm" type="button" data-timer="set">Set</button>
+  </div>
+  <div class="controls">
+    <button class="btn btn--primary" type="button" data-timer="toggle"><svg class="icon" aria-hidden="true"><use href="#i-play"></use></svg><span>Start</span></button>
+    <button class="btn btn--ghost" type="button" data-timer="reset"><svg class="icon" aria-hidden="true"><use href="#i-reset"></use></svg><span>Reset</span></button>
+  </div>
+</section>
+
+<section class="card card--glow tool" id="panel-stopwatch" role="tabpanel" aria-labelledby="tab-stopwatch" hidden>
+  <div class="big-time" data-display="stopwatch" role="timer">00:00.00</div>
+  <div class="controls">
+    <button class="btn btn--primary" type="button" data-sw="toggle"><svg class="icon" aria-hidden="true"><use href="#i-play"></use></svg><span>Start</span></button>
+    <button class="btn btn--ghost" type="button" data-sw="lap" disabled>Lap</button>
+    <button class="btn btn--ghost" type="button" data-sw="reset"><svg class="icon" aria-hidden="true"><use href="#i-reset"></use></svg><span>Reset</span></button>
+  </div>
+  <ol class="laps" data-laps aria-label="Laps"></ol>
+</section>
+
+<section class="card card--glow tool" id="panel-pomodoro" role="tabpanel" aria-labelledby="tab-pomodoro" hidden>
+  <p class="phase" data-pomo="phase">Focus</p>
+  <div class="ring ring--focus" data-ring="pomodoro">
+    <svg viewBox="0 0 120 120" aria-hidden="true"><circle class="ring__track" cx="60" cy="60" r="54"/><circle class="ring__bar" cx="60" cy="60" r="54"/></svg>
+    <span class="ring__time" data-display="pomodoro" role="timer">25:00</span>
+  </div>
+  <p class="muted">Round <strong data-pomo="round">1</strong> of 4 · <span data-pomo="done">0</span> completed today</p>
+  <div class="controls">
+    <button class="btn btn--primary" type="button" data-pomo-btn="toggle"><svg class="icon" aria-hidden="true"><use href="#i-play"></use></svg><span>Start</span></button>
+    <button class="btn btn--ghost" type="button" data-pomo-btn="skip">Skip</button>
+    <button class="btn btn--ghost" type="button" data-pomo-btn="reset"><svg class="icon" aria-hidden="true"><use href="#i-reset"></use></svg><span>Reset</span></button>
+  </div>
+  <p class="hint">25 min focus · 5 min break · 15 min long break after 4 rounds.</p>
+</section>
+{% endblock %}

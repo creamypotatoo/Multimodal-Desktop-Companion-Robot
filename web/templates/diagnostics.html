@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import status_row %}
+{% block title %}Diagnostics{% endblock %}
+{% block heading %}Diagnostics{% endblock %}
+{% block content %}
+<section aria-labelledby="host-title">
+  <div class="section-head">
+    <h2 id="host-title" class="section-title">Host system <small class="muted" data-field="platform"></small></h2>
+    <span class="muted small" data-field="refreshed" aria-live="off"></span>
+  </div>
+  <div class="metrics">
+    <div class="metric" data-metric="cpu_percent">
+      <span class="metric__label">CPU</span><span class="metric__value" data-value>—</span>
+      <span class="meter" aria-hidden="true"><span class="meter__fill" data-fill></span></span>
+      <span class="badge badge--pending" data-badge>…</span>
+    </div>
+    <div class="metric" data-metric="memory_percent">
+      <span class="metric__label">RAM</span><span class="metric__value" data-value>—</span>
+      <span class="meter" aria-hidden="true"><span class="meter__fill" data-fill></span></span>
+      <span class="badge badge--pending" data-badge>…</span>
+    </div>
+    <div class="metric" data-metric="temperature">
+      <span class="metric__label">Temperature</span><span class="metric__value" data-value>—</span>
+      <span class="meter" aria-hidden="true"><span class="meter__fill" data-fill></span></span>
+      <span class="badge badge--pending" data-badge>…</span>
+    </div>
+    <div class="metric" data-metric="uptime">
+      <span class="metric__label">Host uptime</span><span class="metric__value" data-value>—</span>
+      <span class="badge badge--pending" data-badge>…</span>
+    </div>
+  </div>
+  <p class="hint">Real values from the operating system (Linux <code>/proc</code>, thermal zone). Anything the OS doesn't report shows as unavailable, never estimated.</p>
+</section>
+
+<div class="grid grid--2">
+  <section class="card" aria-labelledby="links-title">
+    <div class="card__head"><h2 id="links-title" class="card__title">Controllers</h2></div>
+    <ul class="status-list">
+      {{ status_row('esp32', 'chip', 'ESP32 link') }}
+      {{ status_row('service', 'pulse', 'Robot service') }}
+    </ul>
+  </section>
+  <section class="card" aria-labelledby="sensors-title">
+    <div class="card__head"><h2 id="sensors-title" class="card__title">Sensors &amp; peripherals</h2></div>
+    <ul class="status-list">
+      {{ status_row('camera', 'camera', 'Camera') }}
+      {{ status_row('microphone', 'mic', 'Microphone') }}
+      {{ status_row('speaker', 'chat', 'Speaker') }}
+      {{ status_row('tft_display', 'eye', 'TFT eye display') }}
+    </ul>
+  </section>
+</div>
+{% endblock %}

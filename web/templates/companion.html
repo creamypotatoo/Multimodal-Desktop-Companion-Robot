@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import eye_preview, status_row %}
+{% block title %}Companion{% endblock %}
+{% block heading %}Companion{% endblock %}
+{% block content %}
+<div class="grid grid--2">
+  <section class="card card--glow" aria-labelledby="conv-title">
+    <div class="card__head">
+      <h2 id="conv-title" class="card__title">Conversation</h2>
+      <span class="badge badge--simulated">Simulated</span>
+    </div>
+    {{ eye_preview('md') }}
+    <p class="conv-state">State: <strong data-field="conv-state">—</strong></p>
+    <button class="btn btn--primary btn--block btn--lg" type="button" data-action="conversation"
+            aria-pressed="false">Start conversation</button>
+    <p class="hint" data-field="conv-hint">The voice pipeline (main.py) keeps running independently. This button only simulates a session.</p>
+  </section>
+
+  <section class="card" aria-labelledby="systems-title">
+    <div class="card__head"><h2 id="systems-title" class="card__title">Companion systems</h2></div>
+    <ul class="status-list">
+      {{ status_row('face_recognition', 'face', 'Facial recognition') }}
+      {{ status_row('microphone', 'mic', 'Microphone') }}
+      {{ status_row('ai', 'ai', 'AI connection (Ollama)') }}
+    </ul>
+    <p class="hint">Unavailable items aren't connected to the dashboard in Phase 1, so no data is shown for them.</p>
+  </section>
+</div>
+{% endblock %}

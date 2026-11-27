@@ -1,0 +1,5 @@
+# Eli web dashboard (Phase 1, mock mode). Install inside the project venv:
+#   python -m pip install -r requirements-web.txt
+# Flask brings Werkzeug (password hashing, dev server), Jinja2 and itsdangerous
+# (signed session cookies). No hardware or Raspberry Pi packages are needed.
+Flask>=3.0,<4

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#05070d">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>{% block title %}Eli{% endblock %} · Eli Control</title>
+  <link rel="icon" href="{{ url_for('static', filename='img/favicon.svg') }}" type="image/svg+xml">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+</head>
+<body data-page="{{ page|default('') }}">
+{% include '_icons.html' %}
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="shell">
+  <aside class="sidebar" aria-label="Primary">
+    <div class="brand">
+      <span class="brand__mark" aria-hidden="true"><span></span><span></span></span>
+      <span class="brand__text"><strong>Eli</strong><small>Control</small></span>
+    </div>
+    <nav class="sidebar__nav">
+      {% for name, url, label, icon, desc in nav_pages %}
+      <a href="{{ url_for('pages.' ~ name) }}" class="navlink{% if page == name %} is-active{% endif %}"
+         {% if page == name %}aria-current="page"{% endif %}>
+        <svg class="icon" aria-hidden="true"><use href="#i-{{ icon }}"></use></svg>
+        <span>{{ label }}</span>
+      </a>
+      {% endfor %}
+    </nav>
+    <div class="sidebar__foot">
+      <span class="badge badge--simulated" title="All robot actions are simulated in Phase 1">{{ backend|upper }} MODE</span>
+      <form method="post" action="{{ url_for('auth.logout') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn--ghost btn--sm" type="submit">
+          <svg class="icon" aria-hidden="true"><use href="#i-logout"></use></svg> Sign out
+        </button>
+      </form>
+    </div>
+  </aside>
+
+  <div class="main-col">
+    <header class="topbar">
+      <div class="topbar__title">
+        <span class="brand__mark brand__mark--sm" aria-hidden="true"><span></span><span></span></span>
+        <h1>{% block heading %}{% endblock %}</h1>
+      </div>
+      <div class="topbar__status" role="status" aria-live="polite">
+        <span class="pill" id="conn-pill" data-state="pending">
+          <span class="dot" aria-hidden="true"></span><span class="pill__text">Connecting…</span>
+        </span>
+        <span class="pill pill--mode" id="mode-pill" title="Operating mode">
+          <svg class="icon icon--sm" aria-hidden="true"><use href="#i-mode"></use></svg>
+          <span class="pill__text">—</span>
+        </span>
+        <form class="topbar__logout" method="post" action="{{ url_for('auth.logout') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="icon-btn" type="submit" aria-label="Sign out" title="Sign out">
+            <svg class="icon" aria-hidden="true"><use href="#i-logout"></use></svg>
+          </button>
+        </form>
+      </div>
+    </header>
+
+    <main id="main" class="content" tabindex="-1">
+      <div class="sim-banner" role="note">
+        <svg class="icon icon--sm" aria-hidden="true"><use href="#i-info"></use></svg>
+        <span><strong>Mock mode.</strong> Commands are simulated. No motors, camera, microphone or sensors are connected.</span>
+      </div>
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</div>
+
+<nav class="bottomnav" aria-label="Primary (mobile)">
+  {% for name, url, label, icon, desc in nav_pages if name in mobile_nav %}
+  <a href="{{ url_for('pages.' ~ name) }}" class="bottomnav__link{% if page == name %} is-active{% endif %}"
+     {% if page == name %}aria-current="page"{% endif %}>
+    <svg class="icon" aria-hidden="true"><use href="#i-{{ icon }}"></use></svg>
+    <span>{{ label }}</span>
+  </a>
+  {% endfor %}
+</nav>
+
+<div class="toasts" id="toasts" aria-live="assertive" aria-atomic="false"></div>
+<script type="module" src="{{ url_for('static', filename='js/pages/' ~ page ~ '.js') }}"></script>
+</body>
+</html>
