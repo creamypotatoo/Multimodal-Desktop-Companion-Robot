@@ -142,7 +142,7 @@ def _notify(on_start):
             pass
 
 
-def _speak_espeak(text, config, on_start=None):
+def _speak_espeak(text, config, on_start=None, *, should_play=None):
     tools = _find_pi_tools()
     if tools is None:
         missing = [tool for tool in PI_TOOLS if not shutil.which(tool)]
@@ -157,26 +157,34 @@ def _speak_espeak(text, config, on_start=None):
         _run([tools["ffmpeg"], "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
               "-i", raw_wav, "-filter:a", f"volume={config.volume:g}", out_wav],
              timeout=SYNTH_TIMEOUT, stage="ffmpeg")
+        if should_play is not None and not should_play():
+            return
         _notify(on_start)
         _run([tools["aplay"], "-q", "-D", config.device, out_wav],
              timeout=PLAY_TIMEOUT, stage="aplay")
 
 
-def _speak_pyttsx3(text, config, on_start=None):
+def _speak_pyttsx3(text, config, on_start=None, *, should_play=None):
     import pyttsx3  # imported lazily so the Pi does not need it
 
     engine = pyttsx3.init()
     engine.setProperty("rate", RATE)
+    if should_play is not None:
+        if not should_play():
+            return
+        engine.setProperty("volume", config.volume)
     engine.say(text)
     _notify(on_start)
     engine.runAndWait()  # blocks until speech finishes
 
 
-def speak(text, config=None, on_start=None):
+def speak(text, config=None, on_start=None, *, should_play=None):
     """Speak ``text`` and block until finished. Calls never overlap.
 
     ``on_start`` (optional) is called once, just before audio playback begins
     (after synthesis), e.g. to show the speaking expression.
+    An optional ``should_play`` predicate can suppress queued speech at that
+    boundary. It does not interrupt playback that has already started.
     """
     if text is None or not str(text).strip():
         return
@@ -184,10 +192,13 @@ def speak(text, config=None, on_start=None):
     config = config or TTSConfig.from_env()
     backend = resolve_backend(config)
     with _speech_lock:
+        if should_play is not None and not should_play():
+            return
+        options = {} if should_play is None else {"should_play": should_play}
         if backend == "espeak":
-            _speak_espeak(text, config, on_start)
+            _speak_espeak(text, config, on_start, **options)
         else:
-            _speak_pyttsx3(text, config, on_start)
+            _speak_pyttsx3(text, config, on_start, **options)
 
 
 def _cli(argv=None):

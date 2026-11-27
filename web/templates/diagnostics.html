@@ -42,6 +42,16 @@
       {{ status_row('safety_sensors', 'pulse', 'Movement safety sensors') }}
     </ul>
     <p class="hint" data-field="controller-error" role="status" hidden></p>
+    <ul class="status-list" data-runtime-health hidden>
+      {{ status_row('runtime_lifecycle', 'pulse', 'Unified runtime') }}
+      {{ status_row('runtime_hardware', 'move', 'Motor backend') }}
+      {{ status_row('runtime_ai', 'chat', 'AI responder') }}
+      {{ status_row('runtime_conversation', 'chat', 'Conversation worker') }}
+      {{ status_row('runtime_camera', 'camera', 'Session camera') }}
+      {{ status_row('runtime_microphone', 'mic', 'Session microphone') }}
+      {{ status_row('runtime_eyes', 'eye', 'Eye engine') }}
+      {{ status_row('runtime_audio', 'chat', 'Speech output') }}
+    </ul>
   </section>
   <section class="card" aria-labelledby="sensors-title">
     <div class="card__head"><h2 id="sensors-title" class="card__title">Sensors &amp; peripherals</h2></div>

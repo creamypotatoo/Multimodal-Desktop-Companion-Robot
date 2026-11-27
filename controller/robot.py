@@ -75,7 +75,7 @@ class RobotController:
     backend = 'mock'
 
     def __init__(self, clock=time.monotonic, wall_clock=time.time, *, adapters=None,
-                 utilities=None, lease_seconds=2.0):
+                 utilities=None, lease_seconds=2.0, managed_conversation=False, initial_volume=70):
         if not math.isfinite(lease_seconds) or lease_seconds <= 0:
             raise ValueError('Control lease must have a positive, finite duration')
         self._clock = clock
@@ -92,7 +92,7 @@ class RobotController:
         self._started = clock()
         self._mode = RobotMode.STANDBY
         self._expression = Expression.IDLE
-        self._volume = 70
+        self._volume = _integer(initial_volume, 'volume', *VOLUME_RANGE)
         self._speed = 50
         self._eye_color = DEFAULT_EYE_COLOR
         self._animation_speed = 1.0
@@ -105,6 +105,11 @@ class RobotController:
         self._fault = None
         self._sensors = SafetyReading(None, None)
         self._conversation = False
+        self._managed_conversation = managed_conversation
+        self._behavior = State.IDLE
+        self._generation = 0
+        self._temporary_expression = None
+        self._runtime_health = {}
         self._history = deque(maxlen=HISTORY_LENGTH)
         self._availability = self.capabilities()
         self._last_result = None
@@ -158,6 +163,7 @@ class RobotController:
                 self._closed = False
                 self._stop_motion('startup')
                 self._mode = RobotMode.STANDBY
+                self._temporary_expression = None
                 for action, value in ((self._change_conversation, False),
                                       (self._change_expression, Expression.IDLE)):
                     try:
@@ -176,6 +182,8 @@ class RobotController:
                 if self._closed:
                     return
                 self._closed = True
+                if self._managed_conversation:
+                    self._change_conversation(False)
                 self._stop_motion('shutdown')
                 self._condition.notify()
             if self._worker is not None:
@@ -219,9 +227,11 @@ class RobotController:
                 self._stop_motion('command_expired')
         if self._lease and now >= self._lease[1]:
             self._lease = None
+        if self._managed_conversation:
+            self._refresh_expression(now)
         feed = self.utilities.notifications(self._utility_cursor)
         for event in feed['events']:
-            self.events.publish('utility_completed', stream=feed['stream'], **event)
+            self.events.publish('utility_completed', stream=feed['stream'], observed_at=now, **event)
         self._utility_cursor = feed['cursor']
 
     def _read_safety(self):
@@ -293,6 +303,8 @@ class RobotController:
         return {'moving': True, 'direction': self._motion['direction'], 'remaining_ms': remaining}
 
     def _robot_state(self):
+        if self._managed_conversation:
+            return self._behavior.name
         if not self.adapters.simulated:
             return None
         return (State.LISTENING if self._conversation else State.IDLE).name
@@ -327,8 +339,52 @@ class RobotController:
             return
         self._invoke('conversation', self.adapters.conversation, 'conversation', active)
         self._conversation = active
+        if self._managed_conversation:
+            self._generation += 1
+            self._behavior = State.IDLE
         if changed:
             self.events.publish('conversation_changed', active=active)
+
+    def interaction(self):
+        with self._lock:
+            return self._generation if (self._managed_conversation and not self._closed
+                                         and self._conversation and self._mode is RobotMode.COMPANION) else None
+
+    def publish_behavior(self, generation, state, *, finished=False):
+        with self._lock:
+            if generation is None or generation != self.interaction():
+                return False
+            if finished:
+                self._change_conversation(False)
+            elif state is not self._behavior:
+                self._behavior = state
+                self.events.publish('behavior_changed', state=state.name)
+            self._refresh_expression(self._clock())
+            return True
+
+    def update_runtime_health(self, component, availability, detail):
+        with self._lock:
+            self._runtime_health[component] = dict(availability=availability, detail=detail)
+
+    def can_announce(self, in_sleep=False):
+        with self._lock:
+            return (not self._closed and not self._conversation and not self._estop and not self._fault
+                    and (self._mode in (RobotMode.STANDBY, RobotMode.COMPANION)
+                         or in_sleep and self._mode is RobotMode.SLEEP))
+
+    def _refresh_expression(self, now):
+        from display.robot_eyes import STATE_EXPRESSIONS
+
+        if self._temporary_expression and now >= self._temporary_expression[1]:
+            self._temporary_expression = None
+        expression = STATE_EXPRESSIONS[self._behavior]
+        if self._temporary_expression:
+            expression = self._temporary_expression[0]
+        if self._estop or self._fault:
+            expression = Expression.CONFUSED
+        if self._mode is RobotMode.SLEEP:
+            expression = Expression.SLEEPING
+        self._change_expression(expression)
 
     def _availability_of(self, adapter):
         return getattr(adapter, 'availability', SIMULATED if self.adapters.simulated else UNAVAILABLE)
@@ -357,17 +413,24 @@ class RobotController:
                 'uptime_s': int(self._clock() - self._started),
                 'capabilities': self.capabilities(),
                 'history': deepcopy(list(self._history)),
+                **({'runtime': deepcopy(self._runtime_health)} if self._managed_conversation else {}),
             }
 
     def capabilities(self):
         return {
-            'eyes': self._availability_of(self.adapters.eyes),
-            'volume': self._availability_of(self.adapters.audio),
+            'eyes': self._runtime_health.get('eyes', {}).get(
+                'availability', self._availability_of(self.adapters.eyes)),
+            'volume': self._runtime_health.get('audio', {}).get(
+                'availability', self._availability_of(self.adapters.audio)),
             'movement': self._availability_of(self.adapters.motors),
             'servos': self._availability_of(self.adapters.servos),
-            'conversation': self._availability_of(self.adapters.conversation),
-            'camera': UNAVAILABLE, 'microphone': UNAVAILABLE,
-            'face_recognition': UNAVAILABLE, 'ai': UNAVAILABLE, 'esp32': UNAVAILABLE,
+            'conversation': self._runtime_health.get('conversation', {}).get(
+                'availability', self._availability_of(self.adapters.conversation)),
+            'camera': self._runtime_health.get('camera', {}).get('availability', UNAVAILABLE),
+            'microphone': self._runtime_health.get('microphone', {}).get('availability', UNAVAILABLE),
+            'face_recognition': UNAVAILABLE,
+            'ai': self._runtime_health.get('ai', {}).get('availability', UNAVAILABLE),
+            'esp32': UNAVAILABLE,
             'safety_sensors': (self._availability_of(self.adapters.sensors)
                                if self._sensors.obstacle is not None and self._sensors.cliff is not None
                                else UNAVAILABLE),
@@ -391,8 +454,16 @@ class RobotController:
                 if not self._stop_motion('mode_transition'):
                     raise AdapterError('Motor stop could not be confirmed')
             self._change_conversation(False)
-            self._change_expression(Expression.SLEEPING if mode is RobotMode.SLEEP else Expression.IDLE)
             self._mode = mode
+            if self._managed_conversation:
+                self._temporary_expression = None
+                self._refresh_expression(self._clock())
+            else:
+                try:
+                    self._change_expression(Expression.SLEEPING if mode is RobotMode.SLEEP else Expression.IDLE)
+                except AdapterError:
+                    self._mode = previous
+                    raise
             self._record('mode', mode=mode.value, previous=previous.value)
             self.events.publish('mode_changed', mode=mode.value, previous=previous.value)
         return dict(self.get_mode(), previous=previous.value, expression=self._expression.value,
@@ -414,7 +485,11 @@ class RobotController:
         with self._lock:
             if self._mode is RobotMode.SLEEP and parsed is not Expression.SLEEPING:
                 raise ConflictError('Eli is asleep; change the mode before setting an expression')
-            self._change_expression(parsed)
+            if self._managed_conversation:
+                self._temporary_expression = (parsed, self._clock() + 3)
+                self._refresh_expression(self._clock())
+            else:
+                self._change_expression(parsed)
             self._record('expression', expression=parsed.value)
             return self.get_expression()
 
@@ -422,7 +497,8 @@ class RobotController:
     def get_volume(self):
         with self._lock:
             return {'volume': self._volume, 'min': VOLUME_RANGE[0], 'max': VOLUME_RANGE[1],
-                    'availability': self.capabilities()['volume']}
+                    'availability': self.capabilities()['volume'],
+                    **({'effect': self.adapters.audio.volume_effect} if self._managed_conversation else {})}
 
     def _cmd_volume(self, volume):
         volume = _integer(volume, 'volume', *VOLUME_RANGE)
@@ -579,20 +655,28 @@ class RobotController:
             return {
                 'conversation': {'active': self._conversation, 'state': self._robot_state(),
                                  'availability': self.capabilities()['conversation'],
-                                 'detail': 'Simulated conversation' if self.adapters.simulated
-                                           else 'Conversation adapter state'},
+                                 'detail': ('Unified runtime conversation' if self._managed_conversation
+                                            else 'Simulated conversation' if self.adapters.simulated
+                                            else 'Conversation adapter state')},
                 'face_recognition': _unavailable(),
-                'microphone': _unavailable('Not linked; the dashboard never accesses '
-                                           'microphone audio.'),
-                'ai': _unavailable('Ollama connection status is unavailable.'),
+                'microphone': deepcopy(self._runtime_health.get('microphone',
+                                       _unavailable('Microphone capture is unavailable.'))),
+                'ai': deepcopy(self._runtime_health.get('ai',
+                               _unavailable('Ollama connection status is unavailable.'))),
+                'integrated': self._managed_conversation,
             }
 
     def _cmd_conversation(self, action):
         action = _choice(action, 'action', CONVERSATION_ACTIONS)
         if action == 'start' and self._mode is not RobotMode.COMPANION:
             raise ConflictError(f'Conversations require companion mode (current mode: {self._mode})')
+        if (action == 'start' and self._managed_conversation and
+                self._runtime_health.get('lifecycle', {}).get('detail') != 'Running'):
+            raise ConflictError('Conversation runtime is not running')
         self._change_conversation(action == 'start')
-        if self._mode is RobotMode.COMPANION:
+        if self._managed_conversation:
+            self._refresh_expression(self._clock())
+        elif self._mode is RobotMode.COMPANION:
             self._change_expression(Expression.LISTENING if self._conversation else Expression.IDLE)
         self._record('conversation', action=action)
         return self.companion()

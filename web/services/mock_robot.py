@@ -89,5 +89,6 @@ class MockRobotService(RobotService):
                         'uptime_s': status['uptime_s']},
             'controller': {'safety': status['movement']['safety'],
                            'capabilities': status['capabilities'],
+                           'runtime': status.get('runtime'),
                            'latest_error': next(iter(status['errors']), None)},
         }

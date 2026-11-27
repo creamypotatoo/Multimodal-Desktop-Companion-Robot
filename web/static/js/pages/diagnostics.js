@@ -38,7 +38,13 @@ async function load() {
     if (h.memory) setText($('[data-metric="memory_percent"] .metric__label'), `RAM · ${h.memory.used_mb}/${h.memory.total_mb} MB`);
     fillStatusRow('esp32', d.esp32);
     fillStatusRow('service', d.service, `${d.service.backend} backend · up ${formatDuration(d.service.uptime_s)}`);
-    const { capabilities, latest_error: failure } = d.controller;
+    const { capabilities, latest_error: failure, runtime } = d.controller;
+    $('[data-runtime-health]').hidden = !runtime;
+    if (runtime) {
+      for (const name of ['lifecycle', 'hardware', 'ai', 'conversation', 'camera', 'microphone', 'eyes', 'audio']) {
+        fillStatusRow(`runtime_${name}`, runtime[name] || { availability: 'unavailable', detail: 'No capture yet' });
+      }
+    }
     for (const name of ['movement', 'safety_sensors']) {
       fillStatusRow(name, { availability: capabilities[name] });
     }

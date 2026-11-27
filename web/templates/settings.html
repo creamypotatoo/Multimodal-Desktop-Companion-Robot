@@ -7,7 +7,7 @@
   <section class="card card--glow" aria-labelledby="eyes-title">
     <div class="card__head">
       <h2 id="eyes-title" class="card__title">Eyes</h2>
-      <span class="badge badge--simulated">Simulated · TFT not linked</span>
+      <span class="badge badge--simulated">Browser preview</span>
     </div>
     {{ eye_preview('md') }}
     <fieldset class="fieldset">
@@ -48,12 +48,13 @@
     <section class="card" aria-labelledby="audio-title">
       <div class="card__head">
         <h2 id="audio-title" class="card__title">Audio</h2>
-        <span class="badge badge--simulated">Simulated · speaker not linked</span>
+        <span class="badge badge--pending" data-volume-badge>…</span>
       </div>
       <label class="field">
         <span class="field__row"><span class="field__label">Volume</span><output class="field__value" data-out="volume">—</output></span>
         <input class="range" type="range" min="0" max="100" step="1" data-input="volume">
       </label>
+      <p class="hint" data-field="volume-effect"></p>
     </section>
   </div>
 </div>

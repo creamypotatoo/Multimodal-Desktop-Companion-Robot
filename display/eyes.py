@@ -134,11 +134,15 @@ class EyeEngine:
         """Stop the worker, blank the screen and close the display. Idempotent."""
         with self._lifecycle_lock:
             self._stop.set()
-            thread, self._thread = self._thread, None
-            if thread is not None and thread is not threading.current_thread():
+            thread = self._thread
+            if thread is threading.current_thread():
+                return
+            if thread is not None:
                 thread.join(timeout)
                 if thread.is_alive():
                     self._log('[Display] Eye worker did not stop within timeout')
+                    return
+            self._thread = None
             if self._open:
                 try:
                     if self.clear_on_stop:

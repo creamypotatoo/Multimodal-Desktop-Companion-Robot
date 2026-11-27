@@ -1,7 +1,7 @@
 import { api } from '../api.js';
 import { mountEyes } from '../eyes.js';
-import { refresh, startShell, updateMode } from '../shell.js';
-import { $, $$, bindRange, capitalize, setText, toast } from '../ui.js';
+import { onStatus, refresh, startShell, updateMode } from '../shell.js';
+import { $, $$, bindRange, capitalize, setBadge, setText, toast } from '../ui.js';
 
 const eyes = mountEyes();
 const MODE_HINTS = {
@@ -14,7 +14,13 @@ const MODE_HINTS = {
 const fail = (err) => toast(err.message, 'error');
 
 const volume = bindRange($('[data-input="volume"]'), (value) =>
-  api.put('/volume', { volume: value }).catch(fail), { format: (v) => `${v}%` });
+  api.put('/volume', { volume: value }).then(renderVolume).catch(fail), { format: (v) => `${v}%` });
+
+function renderVolume(data) {
+  volume.set(data.volume);
+  setBadge($('[data-volume-badge]'), data.availability);
+  setText('[data-field="volume-effect"]', data.effect || 'Volume is simulated.');
+}
 
 const animSpeed = bindRange($('[data-input="animation_speed"]'), (value) =>
   api.patch('/settings', { animation_speed: value }).then(apply).catch(fail),
@@ -100,4 +106,13 @@ async function init() {
   apply(settings);
 }
 init().catch(fail);
+api.get('/volume').then(renderVolume).catch(fail);
+onStatus((s) => {
+  volume.set(s.volume);
+  setBadge($('[data-volume-badge]'), s.capabilities.volume);
+  eyes?.setExpression(s.expression);
+  check($('[data-modes]'), s.mode);
+  check($('[data-expressions]'), s.expression);
+  setText('[data-field="mode-hint"]', MODE_HINTS[s.mode] || '');
+});
 startShell();

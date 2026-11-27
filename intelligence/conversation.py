@@ -205,7 +205,7 @@ class ConversationSession:
     def __init__(self, person_name=None, fsm=None, *, emotion=None, visit_count=None,
                  record=None, transcriber=None, speaker=None, responder=None,
                  sleep=time.sleep, stt_timeout=STT_TIMEOUT, silence_rms=None,
-                 post_speech_delay=POST_SPEECH_DELAY, max_turns=None):
+                 post_speech_delay=POST_SPEECH_DELAY, max_turns=None, is_current=None):
         self.person_name = person_name
         self.fsm = fsm or RobotStateMachine()
         self.emotion = emotion
@@ -227,6 +227,7 @@ class ConversationSession:
         self.silence_rms = SILENCE_RMS if silence_rms is None else silence_rms
         self.post_speech_delay = post_speech_delay
         self.max_turns = max_turns
+        self._is_current = is_current or (lambda: True)
 
     def _log(self, message):
         print(f"[Conversation] {message}", flush=True)
@@ -237,6 +238,8 @@ class ConversationSession:
         SPEAKING starts when audio playback begins if the speaker supports
         ``on_start``; synthesis before that stays in the current state.
         """
+        if not self._is_current():
+            return False
         if not self._speak_reports_start:
             self.fsm.transition_to(State.SPEAKING)
         print("Eli says:", text, flush=True)
@@ -256,10 +259,14 @@ class ConversationSession:
 
     def turn(self):
         """One listen/respond cycle. Returns 'spoke', 'empty' or 'error'."""
+        if not self._is_current():
+            return 'cancelled'
         self.turns += 1
         self.fsm.transition_to(State.LISTENING)
         try:
             audio_file = self._record()
+            if not self._is_current():
+                return 'cancelled'
             if audio_file is None:
                 # The voice-activity recorder heard no speech before its start
                 # timeout: a quiet room is not an error, keep listening.
@@ -278,6 +285,8 @@ class ConversationSession:
         except Exception as exc:
             return self._error(f"Listening failed: {exc}")
 
+        if not self._is_current():
+            return 'cancelled'
         user_text = clean_transcript(raw)
         if not user_text:
             self._log("No speech detected; listening again.")
@@ -289,14 +298,22 @@ class ConversationSession:
             extra["history"] = tuple(self.history)  # completed turns only
         if "context" in self._respond_kwargs:
             extra["context"] = dict(self.context)
+        if not self._is_current():
+            return 'cancelled'
         try:
             response = self._respond(user_text, self.person_name, **extra)
         except Exception as exc:
             return self._error(f"Response generation failed: {exc}")
+        if not self._is_current():
+            return 'cancelled'
         if not isinstance(response, str) or not response.strip():
             return self._error("Response generation returned nothing")
         if not self.say(response):
+            if not self._is_current():
+                return 'cancelled'
             return self._error("Could not speak response")
+        if not self._is_current():
+            return 'cancelled'
         # Only exchanges the person actually heard become conversation history.
         self.history.append((user_text, response))
         del self.history[:-MAX_HISTORY]
@@ -307,6 +324,8 @@ class ConversationSession:
         return outcome
 
     def _error(self, message):
+        if not self._is_current():
+            return 'cancelled'
         self.consecutive_errors += 1
         self._log(f"{message} ({self.consecutive_errors}/{MAX_CONSECUTIVE_ERRORS})")
         if self.consecutive_errors < MAX_CONSECUTIVE_ERRORS:

@@ -31,7 +31,7 @@ function renderHistory(history) {
 
 onStatus((s) => {
   eyes?.setExpression(s.expression);
-  setText('[data-field="state-label"]', s.conversation_active ? 'listening' : s.mode === 'sleep' ? 'asleep' : 'idle');
+  setText('[data-field="state-label"]', s.mode === 'sleep' ? 'asleep' : s.state?.toLowerCase() || 'idle');
   setText('[data-field="mode"]', s.mode);
   setText('[data-field="expression"]', s.expression);
   setText('[data-field="volume"]', s.volume);

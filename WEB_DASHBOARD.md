@@ -2,10 +2,10 @@
 
 A lightweight, mobile-first control dashboard for Eli, served by Flask.
 Robot actions go through one **central controller with mock adapters**.
-Productivity utilities use a shared service owned by the controller. The dashboard
-never opens GPIO, SPI, the camera, the microphone, motors or the ESP32, and it
-does not import or change the AI pipeline in `main.py`. The two run
-independently.
+Productivity utilities use one shared service owned by the controller. The
+standalone dashboard runs separately from `main.py`. Add `--unified` to opt
+into the [unified conversation runtime](UNIFIED_RUNTIME.md). Runtime workers
+own all local I/O. Flask handlers issue controller commands and read snapshots.
 
 Every control shows whether it is **Live** (real data from the host OS),
 **Simulated** (accepted and remembered, but nothing physical happens) or

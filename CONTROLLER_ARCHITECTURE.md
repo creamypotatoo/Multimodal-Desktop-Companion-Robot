@@ -7,8 +7,10 @@ RobotService facade translates dashboard requests and adds host metrics.
 The controller owns mode, conversation state, eye expression and appearance,
 volume, requested speed, movement, servo positions, safety, availability,
 and recent results. It owns the same UtilityService used by the productivity
-API. Snapshots are detached from controller state. The existing AI process
-and its behavioral state machine run separately.
+API. Snapshots are detached from controller state. In standalone mode the
+legacy AI process runs separately. In the [unified runtime](UNIFIED_RUNTIME.md),
+Flask receives the runtime's controller, which accepts behavioral updates
+only for its current conversation generation.
 
 The launcher calls startup and shutdown explicitly. Startup issues a motor stop,
 sets Standby, requests idle eyes and ends conversation. The controller starts
@@ -22,7 +24,7 @@ with an injected clock to process deadlines without a worker.
 | Mode | Entry and allowed behavior |
 |---|---|
 | Standby | Default. Idle animated eyes, no conversation or movement. |
-| Companion | Idle eyes on entry. Conversation may start, with simulated Listening state and response on the eye preview. A future camera adapter may permit recognition in this mode. |
+| Companion | Idle eyes on entry. Conversation may start. The standalone dashboard simulates Listening; the unified runtime reports the active conversation worker's behavior. |
 | Movement | Authorized entry. End conversation, set idle eyes, and wait for a separate drive or servo request. |
 | Sleep | Stop motors, end conversation, and set sleeping eyes. An authorized mode command wakes the controller. |
 

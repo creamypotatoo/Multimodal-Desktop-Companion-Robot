@@ -14,7 +14,18 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description='Eli web dashboard (mock robot mode)')
     parser.add_argument('--host', help='bind address (overrides ELI_WEB_HOST)')
     parser.add_argument('--port', type=int, help='port (overrides ELI_WEB_PORT)')
+    parser.add_argument('--unified', action='store_true', help='enable the unified conversation runtime')
+    parser.add_argument('--local-io', action='store_true', help='use local audio, AI and configured eyes')
+    parser.add_argument('--local-camera', action='store_true', help='sample a face at conversation start')
+    parser.add_argument('--announce', action='store_true', help='enable spoken productivity announcements')
+    parser.add_argument('--announce-in-sleep', action='store_true', help='also announce in Sleep')
     args = parser.parse_args(argv)
+    if (args.local_io or args.announce or args.announce_in_sleep) and not args.unified:
+        parser.error('Runtime options require --unified')
+    if args.local_camera and not args.local_io:
+        parser.error('--local-camera requires --local-io')
+    if args.announce_in_sleep and not args.announce:
+        parser.error('--announce-in-sleep requires --announce')
     overrides = {k: v for k, v in (('host', args.host), ('port', args.port)) if v is not None}
     try:
         if 'port' in overrides and not 1 <= overrides['port'] <= 65535:
@@ -23,7 +34,18 @@ def main(argv=None):
     except ConfigError as exc:
         print(f'[Web] Configuration error: {exc}', file=sys.stderr, flush=True)
         return 2
-    app = create_app(config)
+    runtime = None
+    if args.unified:
+        from runtime import UnifiedRuntime
+        from runtime.components import local_components, mock_components
+        try:
+            runtime = UnifiedRuntime(local_components(camera=args.local_camera)
+                                     if args.local_io else mock_components(),
+                                     announce=args.announce, announce_in_sleep=args.announce_in_sleep)
+        except (ImportError, ValueError) as exc:
+            print(f'[Runtime] Configuration error: {exc}', file=sys.stderr, flush=True)
+            return 2
+    app = create_app(config, controller=runtime.controller if runtime else None)
     print(f'[Web] Eli dashboard ({config.backend} robot): '
           f'http://{"localhost" if config.is_local else config.host}:{config.port}/', flush=True)
     if config.generated_password:
@@ -34,7 +56,7 @@ def main(argv=None):
         print('[Web] ELI_WEB_SECRET_KEY not set: sessions end when the server restarts.', flush=True)
     if not config.is_local:
         print('[Web] LAN access enabled; the dashboard is reachable by other devices.', flush=True)
-    controller = app.extensions['eli_controller']
+    controller = runtime or app.extensions['eli_controller']
     try:
         controller.startup()
         app.run(host=config.host, port=config.port, debug=False, threaded=True, use_reloader=False)

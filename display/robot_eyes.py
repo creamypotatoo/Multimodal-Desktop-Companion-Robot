@@ -45,6 +45,19 @@ def selected_backend(environ=None):
     return name
 
 
+def create_robot_eyes(backend, environ=None):
+    """Build a configured eye engine. The caller owns startup and shutdown."""
+    from display.config import AnimationConfig, EyeConfig
+    from display.eyes import EyeEngine, create_display
+
+    if backend == 'tft':
+        from hardware.tft_display import TFTConfig
+        display = create_display(backend, config=TFTConfig.from_env(environ))
+    else:
+        display = create_display(backend)
+    return EyeEngine(display, EyeConfig.from_env(environ), AnimationConfig.from_env(environ))
+
+
 def start_robot_eyes(environ=None, *, log=_log, engine_factory=None):
     """Start the eyes once; return the running EyeEngine or None.
 
@@ -60,13 +73,7 @@ def start_robot_eyes(environ=None, *, log=_log, engine_factory=None):
             raise ValueError(f'ELI_DISPLAY_BACKEND={backend!r} is not supported here; '
                              'use tft, mock or off')
         if engine_factory is None:
-            from display.config import AnimationConfig, EyeConfig
-            from display.eyes import EyeEngine, create_display
-            from hardware.tft_display import TFTConfig
-            display = create_display(backend, config=TFTConfig.from_env(environ)) \
-                if backend == 'tft' else create_display(backend)
-            engine = EyeEngine(display, EyeConfig.from_env(environ),
-                               AnimationConfig.from_env(environ))
+            engine = create_robot_eyes(backend, environ)
         else:
             engine = engine_factory(backend)
         engine.start()
