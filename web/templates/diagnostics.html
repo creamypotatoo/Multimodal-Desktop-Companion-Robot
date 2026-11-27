@@ -41,6 +41,22 @@
       {{ status_row('movement', 'move', 'Motor adapter') }}
       {{ status_row('safety_sensors', 'pulse', 'Movement safety sensors') }}
     </ul>
+    <div data-voice-controls hidden>
+      <p class="hint" data-audio-backend></p>
+      <p class="hint" data-audio-output></p>
+      <p class="hint" data-audio-device></p>
+      <label class="field"><span class="field__label">Microphone RMS level</span>
+        <progress data-audio-level max="100" value="0"></progress>
+      </label>
+      <p class="hint" data-audio-speech></p>
+      <dl class="stack">
+        <div><dt>Whisper model</dt><dd data-audio-model></dd></div>
+        <div><dt>Latest wake transcription</dt><dd data-audio-wake-transcript></dd></div>
+        <div><dt>Latest command transcription</dt><dd data-audio-command-transcript></dd></div>
+      </dl>
+      <p class="hint" data-audio-wake></p>
+      <p class="hint" data-audio-health></p>
+    </div>
     <p class="hint" data-field="controller-error" role="status" hidden></p>
     <ul class="status-list" data-runtime-health hidden>
       {{ status_row('runtime_lifecycle', 'pulse', 'Unified runtime') }}

@@ -11,6 +11,9 @@ API. Snapshots are detached from controller state. In standalone mode the
 legacy AI process runs separately. In the [unified runtime](UNIFIED_RUNTIME.md),
 Flask receives the runtime's controller, which accepts behavioral updates
 only for its current conversation generation.
+Voice requests use that same generation. The offline wake path checks the
+operating-mode revision before activating Companion. Only parsed, allowlisted
+actions reach the controller. See [Voice and audio](VOICE_AUDIO.md).
 
 The launcher calls startup and shutdown explicitly. Startup issues a motor stop,
 sets Standby, requests idle eyes and ends conversation. The controller starts

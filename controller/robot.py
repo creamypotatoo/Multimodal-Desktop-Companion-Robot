@@ -91,8 +91,10 @@ class RobotController:
         self._closed = False
         self._started = clock()
         self._mode = RobotMode.STANDBY
+        self._mode_revision = 0
         self._expression = Expression.IDLE
         self._volume = _integer(initial_volume, 'volume', *VOLUME_RANGE)
+        self._unmuted_volume = self._volume or 70
         self._speed = 50
         self._eye_color = DEFAULT_EYE_COLOR
         self._animation_speed = 1.0
@@ -163,6 +165,7 @@ class RobotController:
                 self._closed = False
                 self._stop_motion('startup')
                 self._mode = RobotMode.STANDBY
+                self._mode_revision += 1
                 self._temporary_expression = None
                 for action, value in ((self._change_conversation, False),
                                       (self._change_expression, Expression.IDLE)):
@@ -350,6 +353,33 @@ class RobotController:
             return self._generation if (self._managed_conversation and not self._closed
                                          and self._conversation and self._mode is RobotMode.COMPANION) else None
 
+    def wake_context(self):
+        with self._lock:
+            return self._mode.value, self._mode_revision, self._generation
+
+    def activate_voice(self, expected_mode, revision, generation):
+        """Atomically enter Companion and open a session for a current wake event."""
+        with self._lock:
+            if (self._closed or not self._managed_conversation or self._conversation
+                    or self.wake_context() != (expected_mode, revision, generation)
+                    or self._mode is RobotMode.MOVEMENT
+                    or self._estop or self._fault):
+                return False
+            if self._mode is not RobotMode.COMPANION:
+                self._cmd_mode(RobotMode.COMPANION, authority=Authority(can_wake=True))
+            self._cmd_conversation('start')
+            now = self._clock()
+            self._temporary_expression = (Expression.EXCITED, now + 0.35)
+            self._refresh_expression(now)
+            return True
+
+    def execute_voice(self, generation, operation, **args):
+        """Accept an allowlisted intent only while its interaction still owns audio."""
+        with self._lock:
+            if generation is None or generation != self.interaction():
+                return None
+            return self.execute(Command(operation, Source.VOICE, args))
+
     def publish_behavior(self, generation, state, *, finished=False):
         with self._lock:
             if generation is None or generation != self.interaction():
@@ -465,6 +495,7 @@ class RobotController:
                     self._mode = previous
                     raise
             self._record('mode', mode=mode.value, previous=previous.value)
+            self._mode_revision += 1
             self.events.publish('mode_changed', mode=mode.value, previous=previous.value)
         return dict(self.get_mode(), previous=previous.value, expression=self._expression.value,
                     conversation_active=self._conversation)
@@ -498,13 +529,16 @@ class RobotController:
         with self._lock:
             return {'volume': self._volume, 'min': VOLUME_RANGE[0], 'max': VOLUME_RANGE[1],
                     'availability': self.capabilities()['volume'],
-                    **({'effect': self.adapters.audio.volume_effect} if self._managed_conversation else {})}
+                    **({'effect': self.adapters.audio.volume_effect, 'restore': self._unmuted_volume}
+                       if self._managed_conversation else {})}
 
     def _cmd_volume(self, volume):
         volume = _integer(volume, 'volume', *VOLUME_RANGE)
         with self._lock:
             self._invoke('audio', self.adapters.audio, 'volume', volume)
             self._volume = volume
+            if volume:
+                self._unmuted_volume = volume
             self.events.publish('volume_changed', volume=volume)
             self._record('volume', volume=volume)
             return self.get_volume()

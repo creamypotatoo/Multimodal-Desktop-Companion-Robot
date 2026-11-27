@@ -1,3 +1,4 @@
+import { startVoiceAudio } from '../voice-audio.js';
 import { api } from '../api.js';
 import { startShell } from '../shell.js';
 import { $, $$, fillStatusRow, formatDuration, setBadge, setText } from '../ui.js';
@@ -65,3 +66,5 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) load
 load().then(loop);
 $$('.metric').forEach((m) => m.setAttribute('aria-live', 'off'));
 startShell();
+
+startVoiceAudio();

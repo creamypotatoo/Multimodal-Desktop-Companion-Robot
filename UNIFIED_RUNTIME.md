@@ -49,8 +49,10 @@ reports Idle, Listening, Thinking and Speaking from that session. The worker
 publishes behavioral updates only for the active generation. Ending a session
 or changing mode invalidates the generation, so late recording, STT and AI
 results cannot become a new reply. Playback checks again after synthesis.
-Already-started playback may finish. A new session waits for prior I/O to
-drain, keeping microphone and speaker work sequential.
+The Phase 5 real-audio backends isolate playback in a child process and cancel
+it on a mode change, interaction cancellation or Stop speaking. A new session
+waits for prior I/O to drain. See [Voice and audio](VOICE_AUDIO.md) for backend
+selection, wake controls and the half-duplex policy.
 
 Expression priority is Sleep, latched movement safety, a three-second
 operator expression, then the current behavioral expression. A mode change
@@ -95,8 +97,8 @@ and visit memory. Camera/model failures allow an anonymous session. The
 sample is bounded by frame count; driver calls can take time to return.
 Local I/O has yet to be verified on the Pi. Use the mock launch for review.
 
-Phase 5 can add authorized voice initiation and typed command routing through
-the same controller. Phase 6 can replace the mock motor port with a negotiated
+Phase 5 adds wake initiation and typed voice routing through the same
+controller. Phase 6 can replace the mock motor port with a negotiated
 transport and independently enforced hardware safety.
 
 ## Verify

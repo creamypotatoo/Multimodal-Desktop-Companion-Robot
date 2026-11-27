@@ -19,14 +19,14 @@ export function updateMode(mode) {
   const pill = $('#mode-pill');
   if (pill && mode) {
     $('.pill__text', pill).textContent = mode;
-    pill.title = `Operating mode: ${mode} (simulated)`;
+    pill.title = `Operating mode: ${mode}`;
   }
 }
 
 export async function refresh() {
   try {
     latest = await api.get('/status');
-    setConnection('online', `Online · ${latest.backend}`);
+    setConnection('online', 'Online');
     updateMode(latest.mode);
     listeners.forEach((fn) => fn(latest));
   } catch (err) {

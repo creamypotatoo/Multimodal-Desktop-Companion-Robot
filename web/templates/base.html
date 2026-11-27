@@ -29,7 +29,7 @@
       {% endfor %}
     </nav>
     <div class="sidebar__foot">
-      <span class="badge badge--simulated" title="Motors use simulated adapters">{{ backend|upper }} MODE</span>
+      <span class="badge badge--simulated">Motors simulated</span>
       <form method="post" action="{{ url_for('auth.logout') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button class="btn btn--ghost btn--sm" type="submit">

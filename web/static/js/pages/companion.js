@@ -1,3 +1,4 @@
+import { startVoiceAudio } from '../voice-audio.js';
 import { api } from '../api.js';
 import { mountEyes } from '../eyes.js';
 import { onStatus, refresh, startShell } from '../shell.js';
@@ -57,3 +58,5 @@ onStatus((s) => {
 });
 api.get('/companion').then((d) => { render(d); renderModeHint(); }).catch((e) => toast(e.message, 'error'));
 startShell();
+
+startVoiceAudio();

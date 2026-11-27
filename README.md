@@ -6,3 +6,6 @@ unified dashboard and conversation runtime. See
 future Raspberry Pi setup, [dashboard setup](WEB_DASHBOARD.md) for authentication
 and networking, and [controller architecture](CONTROLLER_ARCHITECTURE.md) for
 mode and movement policy.
+
+See [Voice and audio](VOICE_AUDIO.md) to set up mock audio, Windows microphone
+and speech, wake phrases, and optional local Ollama.

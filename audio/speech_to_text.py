@@ -34,7 +34,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-import sounddevice as sd
+try:
+    import sounddevice as sd
+except (ImportError, OSError):
+    sd = None  # Mock runtime and pure VAD tests can run without PortAudio.
 
 SAMPLE_RATE = 16000
 BLOCK_SECONDS = 0.03                       # 30 ms analysis chunks
@@ -105,7 +108,8 @@ def _blocks(seconds, block_seconds):
     return max(1, int(math.ceil(seconds / block_seconds - 1e-9)))
 
 
-def capture_utterance(read_chunk, settings=None, block_seconds=BLOCK_SECONDS, log=_log):
+def capture_utterance(read_chunk, settings=None, block_seconds=BLOCK_SECONDS, log=_log,
+                      *, on_status=None, initial_noise=None):
     """Run voice-activity detection over chunks returned by ``read_chunk()``.
 
     ``read_chunk`` must block until the next chunk of int16 samples is
@@ -116,23 +120,31 @@ def capture_utterance(read_chunk, settings=None, block_seconds=BLOCK_SECONDS, lo
     s = settings or VadSettings()
     n_pre = int(round(s.pre_roll / block_seconds))
     n_onset = _blocks(s.min_speech, block_seconds)
-    n_calibrate = _blocks(s.calibration, block_seconds)
+    n_calibrate = _blocks(s.calibration, block_seconds) if s.calibration and initial_noise is None else 0
     n_wait = _blocks(s.start_timeout, block_seconds)
     n_silence = _blocks(s.silence, block_seconds)
     n_trailing = int(round(s.trailing / block_seconds))
     n_max = _blocks(s.max_duration, block_seconds)
 
     recent = deque(maxlen=n_pre + n_onset)  # pre-roll + onset candidate chunks
-    noise = None
+    noise = initial_noise or 0.0
+    calibration = []
     run = 0
     onset_threshold = s.threshold
+    if on_status and not n_calibrate:
+        on_status('waiting', noise, max(s.threshold, noise * s.noise_ratio))
     for index in range(n_wait):
         chunk = np.asarray(read_chunk(), dtype=np.int16).ravel()
         recent.append(chunk)
         level = chunk_rms(chunk)
         if index < n_calibrate:
-            # Quietest chunk of the first moments = background-noise estimate.
-            noise = level if noise is None else min(noise, level)
+            calibration.append(level)
+            if len(calibration) == n_calibrate:
+                # A lower quartile resists both an isolated zero and short sound spikes.
+                ordered = sorted(calibration)
+                noise = ordered[len(ordered) // 4] if on_status else ordered[0]
+                if on_status:
+                    on_status('waiting', noise, max(s.threshold, noise * s.noise_ratio))
             continue
         onset_threshold = max(s.threshold, noise * s.noise_ratio)
         if level >= onset_threshold:
@@ -143,8 +155,12 @@ def capture_utterance(read_chunk, settings=None, block_seconds=BLOCK_SECONDS, lo
             run = 0
             noise = level if level < noise else noise + NOISE_RISE * (level - noise)
     else:
+        if on_status:
+            on_status('no speech', noise, onset_threshold)
         return None
 
+    if on_status:
+        on_status('speech', noise, onset_threshold)
     frames = list(recent)
     continue_threshold = onset_threshold * CONTINUE_RATIO
     silent = 0
@@ -160,13 +176,17 @@ def capture_utterance(read_chunk, settings=None, block_seconds=BLOCK_SECONDS, lo
                 stopped_by_silence = True
                 break
     if stopped_by_silence:
-        del frames[len(frames) - (silent - n_trailing):]
+        trim = max(0, silent - n_trailing)
+        if trim:
+            del frames[-trim:]
     else:
         log(f"Reached the {s.max_duration:g}s recording limit.")
     return np.concatenate(frames).astype(np.int16, copy=False)
 
 
 def find_microphone(devices=None):
+    if devices is None and sd is None:
+        raise RuntimeError('Install sounddevice and PortAudio to use the microphone.')
     devices = sd.query_devices() if devices is None else devices
     mic_index = next(
         (

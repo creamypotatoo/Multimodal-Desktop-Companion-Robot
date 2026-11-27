@@ -55,6 +55,45 @@
         <input class="range" type="range" min="0" max="100" step="1" data-input="volume">
       </label>
       <p class="hint" data-field="volume-effect"></p>
+      <div class="stack" data-voice-controls hidden>
+        <p class="hint" data-audio-backend></p>
+        <label class="field" data-audio-input-field hidden>
+          <span class="field__label">Microphone for next capture</span>
+          <select class="input" data-audio-input aria-label="Microphone for next capture"></select>
+        </label>
+        <p class="hint" data-audio-output></p>
+        <section class="stack" data-microphone-controls hidden>
+          <label class="field"><span class="field__label">Microphone RMS level</span>
+            <progress data-audio-level max="100" value="0"></progress>
+          </label>
+          <p class="hint" data-audio-speech></p>
+          <button class="btn btn--ghost" type="button" data-audio-action="microphone-test">Test microphone</button>
+          <p class="hint" data-audio-mic-test role="status"></p>
+          <form class="stack" data-audio-sensitivity>
+            <label class="field"><span class="field__label">Minimum speech RMS (int16)</span>
+              <input class="input" name="threshold" type="number" min="5" max="5000" step="any" required>
+            </label>
+            <label class="field"><span class="field__label">Speech-to-noise ratio</span>
+              <input class="input" name="noise_ratio" type="number" min="1.2" max="8" step="any" required>
+            </label>
+            <button class="btn btn--ghost" type="submit">Save sensitivity</button>
+          </form>
+        </section>
+        <div class="controls">
+          <button class="btn btn--ghost" type="button" data-audio-action="mute">Mute</button>
+          <button class="btn btn--ghost" type="button" data-audio-action="test">Test speaker</button>
+        </div>
+        <form class="stack" data-wake-form>
+          <label class="field">
+            <span class="field__label">Wake phrase</span>
+            <input class="input" name="phrase" maxlength="64" required>
+          </label>
+          <label><input type="checkbox" name="enabled"> Enable wake listening</label>
+          <label><input type="checkbox" name="in_sleep"> Allow wake listening in Sleep</label>
+          <button class="btn btn--primary" type="submit">Save wake settings</button>
+          <p class="hint" data-audio-wake></p>
+        </form>
+      </div>
     </section>
   </div>
 </div>

@@ -13,6 +13,10 @@
     <p class="conv-state">State: <strong data-field="conv-state">—</strong></p>
     <button class="btn btn--primary btn--block btn--lg" type="button" data-action="conversation"
             aria-pressed="false">Start conversation</button>
+    <div data-voice-controls hidden>
+      <button class="btn btn--ghost" type="button" data-audio-action="stop">Stop speaking</button>
+      <p class="hint" data-audio-wake></p>
+    </div>
     <p class="hint" data-field="conv-hint">The voice pipeline (main.py) keeps running independently. This button only simulates a session.</p>
   </section>
 

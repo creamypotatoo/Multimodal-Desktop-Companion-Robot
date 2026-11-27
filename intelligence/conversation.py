@@ -205,7 +205,8 @@ class ConversationSession:
     def __init__(self, person_name=None, fsm=None, *, emotion=None, visit_count=None,
                  record=None, transcriber=None, speaker=None, responder=None,
                  sleep=time.sleep, stt_timeout=STT_TIMEOUT, silence_rms=None,
-                 post_speech_delay=POST_SPEECH_DELAY, max_turns=None, is_current=None):
+                 post_speech_delay=POST_SPEECH_DELAY, max_turns=None, is_current=None,
+                 log_transcripts=True):
         self.person_name = person_name
         self.fsm = fsm or RobotStateMachine()
         self.emotion = emotion
@@ -228,6 +229,7 @@ class ConversationSession:
         self.post_speech_delay = post_speech_delay
         self.max_turns = max_turns
         self._is_current = is_current or (lambda: True)
+        self._log_transcripts = log_transcripts
 
     def _log(self, message):
         print(f"[Conversation] {message}", flush=True)
@@ -242,7 +244,8 @@ class ConversationSession:
             return False
         if not self._speak_reports_start:
             self.fsm.transition_to(State.SPEAKING)
-        print("Eli says:", text, flush=True)
+        if self._log_transcripts:
+            print("Eli says:", text, flush=True)
         try:
             if self._speak_reports_start:
                 self._speak(text, on_start=lambda: self.fsm.transition_to(State.SPEAKING))
@@ -292,7 +295,8 @@ class ConversationSession:
             self._log("No speech detected; listening again.")
             return self._ok("empty")
 
-        print("You said:", user_text, flush=True)
+        if self._log_transcripts:
+            print("You said:", user_text, flush=True)
         extra = {}
         if "history" in self._respond_kwargs:
             extra["history"] = tuple(self.history)  # completed turns only

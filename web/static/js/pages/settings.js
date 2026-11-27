@@ -1,3 +1,4 @@
+import { startVoiceAudio } from '../voice-audio.js';
 import { api } from '../api.js';
 import { mountEyes } from '../eyes.js';
 import { onStatus, refresh, startShell, updateMode } from '../shell.js';
@@ -116,3 +117,5 @@ onStatus((s) => {
   setText('[data-field="mode-hint"]', MODE_HINTS[s.mode] || '');
 });
 startShell();
+
+startVoiceAudio();

@@ -8,7 +8,7 @@ from controller import Action, Authority
 from productivity import UtilityError
 from web.auth import login_required
 from web.responses import error, ok
-from web.services import ServiceError
+from web.services import ConflictError, ServiceError
 
 bp = Blueprint('api', __name__, url_prefix='/api/v1')
 
@@ -159,6 +159,55 @@ def perception():
 @bp.get('/diagnostics')
 def diagnostics():
     return ok(robot().diagnostics())
+
+
+def runtime():
+    unified = current_app.extensions.get('eli_runtime')
+    if unified is None:
+        raise ConflictError('Voice and audio controls require the unified runtime')
+    return unified
+
+
+@bp.get('/audio')
+def audio_status():
+    unified = current_app.extensions.get('eli_runtime')
+    return ok(dict(enabled=False) if unified is None else dict(enabled=True, **unified.audio_status()))
+
+
+@bp.put('/audio/wake')
+def wake_settings():
+    return ok(runtime().configure_wake(body()))
+
+
+@bp.put('/audio/input')
+def audio_input():
+    return ok(runtime().select_input(body('device')['device']))
+
+
+@bp.put('/audio/sensitivity')
+def audio_sensitivity():
+    data = body('threshold', 'noise_ratio')
+    return ok(runtime().configure_sensitivity(data['threshold'], data['noise_ratio']))
+
+
+@bp.post('/audio/microphone-test')
+def audio_microphone_test():
+    return ok(runtime().test_microphone())
+
+
+@bp.post('/audio/stop')
+def audio_stop():
+    return ok(runtime().stop_speaking())
+
+
+@bp.post('/audio/test')
+def audio_test():
+    return ok(runtime().test_speaker())
+
+
+@bp.put('/audio/mute')
+def audio_mute():
+    return ok(runtime().mute(body('muted')['muted']))
 
 
 def utilities():
