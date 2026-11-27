@@ -10,7 +10,6 @@ from intelligence.memory import remember_encounter, get_person_info
 from behavior.state_machine import RobotStateMachine, State
 from hardware.mock_hardware import MockMotors
 from display.robot_eyes import attach, start_robot_eyes, stop_robot_eyes
-from display.robot_touch import start_robot_touch, stop_robot_touch
 
 EMOTION_CHECK_INTERVAL = 1.0
 # Consecutive frames with the same known identity before a session is locked.
@@ -67,7 +66,6 @@ def main(argv=None):
     locked_person = locked_info = None
     emotion = conversation = None
     eyes = None
-    touch = None
     status = 0
 
     try:
@@ -75,9 +73,6 @@ def main(argv=None):
         # which only controls desktop windows. Never blocks startup.
         eyes = start_robot_eyes()
         attach(fsm, eyes)
-        # Optional touchscreen menu (ELI_TOUCH_BACKEND); needs the eyes, and
-        # failing touch hardware never affects them or the conversation.
-        touch = start_robot_touch(eyes)
         try:
             cascade, recognize = load_vision()
         except Exception as exc:
@@ -190,7 +185,6 @@ def main(argv=None):
         motors.stop()
         if not args.headless:
             close_windows()
-        stop_robot_touch(touch)   # before the eyes: touch shares the TFT's SPI bus
         stop_robot_eyes(eyes)
     return status
 
