@@ -6,8 +6,8 @@ import { $, $$, bindRange, capitalize, setText, toast } from '../ui.js';
 const eyes = mountEyes();
 const MODE_HINTS = {
   companion: 'Conversations can be started. Movement is locked.',
-  focus: 'Productivity mode. Conversations end.',
-  manual: 'Movement and servo controls are unlocked.',
+  standby: 'Normal eyes. Conversation and movement are idle.',
+  movement: 'Allows manual movement when safety checks pass.',
   sleep: 'Motion stops and the eyes sleep. Expression changes are blocked.',
 };
 

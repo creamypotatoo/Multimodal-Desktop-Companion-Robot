@@ -134,6 +134,7 @@ def login():
     session.clear()  # prevent session fixation
     session.permanent = True
     session['authenticated'] = True
+    session['control_session'] = secrets.token_urlsafe(32)
     csrf_token()
     return redirect(_safe_next(next_url))
 

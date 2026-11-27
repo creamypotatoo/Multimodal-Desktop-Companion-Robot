@@ -189,7 +189,7 @@ class AuthTests(WebTestCase):
             with self.subTest(path=path):
                 self.assert_error(self.call(method, path, json={'mode': 'sleep'}), 401,
                                   'unauthorized')
-        self.assertEqual(self.service.get_mode()['mode'], 'companion')
+        self.assertEqual(self.service.get_mode()['mode'], 'standby')
 
     def test_login_success_rotates_session_and_redirects(self):
         self.client.get('/login')
@@ -255,7 +255,7 @@ class AuthTests(WebTestCase):
                           403, 'csrf_failed')
         self.assert_error(self.call('PUT', '/api/v1/mode', json={'mode': 'sleep'}, csrf=False,
                                     headers={'X-CSRF-Token': 'forged'}), 403, 'csrf_failed')
-        self.assertEqual(self.service.get_mode()['mode'], 'companion')
+        self.assertEqual(self.service.get_mode()['mode'], 'standby')
         self.assert_ok(self.call('PUT', '/api/v1/mode', json={'mode': 'sleep'}))
 
 
@@ -317,27 +317,28 @@ class ModeTests(WebTestCase):
 
     def test_transitions(self):
         data = self.assert_ok(self.set_mode('manual'))
-        self.assertEqual((data['mode'], data['previous']), ('manual', 'companion'))
+        self.assertEqual((data['mode'], data['previous']), ('movement', 'standby'))
         data = self.assert_ok(self.set_mode('SLEEP '))
         self.assertEqual((data['mode'], data['expression']), ('sleep', 'sleeping'))
         data = self.assert_ok(self.set_mode('focus'))
-        self.assertEqual((data['mode'], data['expression']), ('focus', 'idle'))
-        self.assertEqual(self.assert_ok(self.client.get('/api/v1/mode'))['mode'], 'focus')
+        self.assertEqual((data['mode'], data['expression']), ('standby', 'idle'))
+        self.assertEqual(self.assert_ok(self.client.get('/api/v1/mode'))['mode'], 'standby')
         modes = [h['mode'] for h in self.service.status()['history'] if h['command'] == 'mode']
-        self.assertEqual(modes, ['focus', 'sleep', 'manual'])
+        self.assertEqual(modes, ['standby', 'sleep', 'movement'])
 
     def test_same_mode_is_noop(self):
-        data = self.assert_ok(self.set_mode('companion'))
-        self.assertEqual(data['previous'], 'companion')
+        data = self.assert_ok(self.set_mode('standby'))
+        self.assertEqual(data['previous'], 'standby')
         self.assertEqual(self.service.status()['history'], [])
 
     def test_invalid_modes(self):
         for value in ('turbo', '', 3, None, ['manual'], True):
             with self.subTest(value=value):
                 self.assert_error(self.set_mode(value), 400, 'validation_error', 'mode')
-        self.assertEqual(self.service.get_mode()['mode'], 'companion')
+        self.assertEqual(self.service.get_mode()['mode'], 'standby')
 
     def test_leaving_companion_ends_conversation(self):
+        self.assert_ok(self.set_mode('companion'))
         self.assert_ok(self.call('POST', '/api/v1/conversation', json={'action': 'start'}))
         self.assertTrue(self.service.status()['conversation_active'])
         self.assertEqual(self.service.status()['state'], 'LISTENING')

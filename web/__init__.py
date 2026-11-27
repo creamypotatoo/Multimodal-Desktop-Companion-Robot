@@ -8,7 +8,6 @@ from datetime import timedelta
 
 from flask import Flask, request
 
-from productivity import UtilityService
 from web import api, auth, pages
 from web.config import WebConfig
 from web.responses import error
@@ -21,7 +20,7 @@ CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' 
        "form-action 'self'; frame-ancestors 'none'")
 
 
-def create_app(config=None, *, service=None, utilities=None, testing=False):
+def create_app(config=None, *, service=None, utilities=None, controller=None, testing=False):
     config = config or WebConfig.from_env()
     app = Flask(__name__)
     app.config.update(
@@ -37,8 +36,15 @@ def create_app(config=None, *, service=None, utilities=None, testing=False):
         PERMANENT_SESSION_LIFETIME=timedelta(hours=config.session_hours),
     )
     app.json.sort_keys = False
-    app.extensions['eli_robot'] = service or create_service(config.backend)
-    app.extensions['eli_utilities'] = utilities if utilities is not None else UtilityService()
+    if service is not None and controller is not None:
+        raise ValueError('Provide either a robot service or a controller')
+    robot = service if service is not None else create_service(
+        config.backend, utilities=utilities, controller=controller)
+    if utilities is not None and robot.controller.utilities is not utilities:
+        raise ValueError('The controller must own the supplied utilities')
+    app.extensions['eli_robot'] = robot
+    app.extensions['eli_controller'] = robot.controller
+    app.extensions['eli_utilities'] = robot.controller.utilities
     app.extensions['eli_login_throttle'] = auth.LoginThrottle()
 
     @app.before_request

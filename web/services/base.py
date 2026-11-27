@@ -1,9 +1,7 @@
 """The robot service contract used by the dashboard API.
 
-The API layer only talks to a ``RobotService``. Phase 1 ships
-``MockRobotService``; a later phase can add a service backed by the real robot
-controller (state machine, eye engine, ESP32 link) with the same methods and
-return shapes, and the frontend will not change.
+The dashboard uses a ``RobotService`` facade for controller commands and
+host diagnostics. Robot state belongs to the controller.
 
 Every method returns plain JSON-serialisable dicts. Invalid input raises
 ``ValidationError``; a valid request the robot cannot perform right now raises
@@ -12,31 +10,10 @@ so the UI can say honestly whether something is real, simulated or missing.
 """
 from abc import ABC, abstractmethod
 
-# How the dashboard labels every capability.
-LIVE = 'live'                # backed by real data from the robot or host
-SIMULATED = 'simulated'      # accepted and remembered, but nothing physical happens
-UNAVAILABLE = 'unavailable'  # not connected in this phase; no data is shown
+from controller.errors import (LIVE, SIMULATED, UNAVAILABLE, ConflictError,
+                               ServiceError, ValidationError)
+
 AVAILABILITY = (LIVE, SIMULATED, UNAVAILABLE)
-
-
-class ServiceError(Exception):
-    status = 500
-    code = 'service_error'
-
-    def __init__(self, message, *, field=None):
-        super().__init__(message)
-        self.message = message
-        self.field = field
-
-
-class ValidationError(ServiceError):
-    status = 400
-    code = 'validation_error'
-
-
-class ConflictError(ServiceError):
-    status = 409
-    code = 'conflict'
 
 
 class RobotService(ABC):
@@ -51,7 +28,7 @@ class RobotService(ABC):
     def get_mode(self): ...
 
     @abstractmethod
-    def set_mode(self, mode): ...
+    def set_mode(self, mode, *, authority): ...
 
     @abstractmethod
     def get_expression(self): ...
@@ -75,16 +52,16 @@ class RobotService(ABC):
     def movement(self): ...
 
     @abstractmethod
-    def move(self, direction, duration_ms=None): ...
+    def move(self, direction, duration_ms=None, *, authority): ...
 
     @abstractmethod
-    def set_speed(self, speed): ...
+    def set_speed(self, speed, *, authority): ...
 
     @abstractmethod
     def stop(self): ...
 
     @abstractmethod
-    def set_servo(self, servo, angle): ...
+    def set_servo(self, servo, angle, *, authority): ...
 
     @abstractmethod
     def companion(self): ...

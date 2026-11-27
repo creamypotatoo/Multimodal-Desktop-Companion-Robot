@@ -38,7 +38,10 @@
     <ul class="status-list">
       {{ status_row('esp32', 'chip', 'ESP32 link') }}
       {{ status_row('service', 'pulse', 'Robot service') }}
+      {{ status_row('movement', 'move', 'Motor adapter') }}
+      {{ status_row('safety_sensors', 'pulse', 'Movement safety sensors') }}
     </ul>
+    <p class="hint" data-field="controller-error" role="status" hidden></p>
   </section>
   <section class="card" aria-labelledby="sensors-title">
     <div class="card__head"><h2 id="sensors-title" class="card__title">Sensors &amp; peripherals</h2></div>

@@ -4,9 +4,9 @@ from web.services.base import (AVAILABILITY, LIVE, SIMULATED, UNAVAILABLE, Confl
 from web.services.mock_robot import MockRobotService
 
 
-def create_service(backend='mock'):
+def create_service(backend='mock', *, utilities=None, controller=None):
     if backend == 'mock':
-        return MockRobotService()
+        return MockRobotService(utilities=utilities, controller=controller)
     raise ValueError(f'Unknown robot service backend {backend!r}')
 
 

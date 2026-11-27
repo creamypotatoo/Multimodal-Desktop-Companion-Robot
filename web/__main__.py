@@ -34,12 +34,12 @@ def main(argv=None):
         print('[Web] ELI_WEB_SECRET_KEY not set: sessions end when the server restarts.', flush=True)
     if not config.is_local:
         print('[Web] LAN access enabled; the dashboard is reachable by other devices.', flush=True)
-    utilities = app.extensions['eli_utilities']
-    utilities.start_scheduler()
+    controller = app.extensions['eli_controller']
     try:
+        controller.startup()
         app.run(host=config.host, port=config.port, debug=False, threaded=True, use_reloader=False)
     finally:
-        utilities.stop_scheduler()
+        controller.shutdown()
     return 0
 
 

@@ -8,6 +8,7 @@ const moveButtons = $$('[data-move]');
 const servoInputs = $$('[data-servo]');
 let enabled = false;
 let readoutTimer = null;
+let mode;
 
 const speed = bindRange($('[data-input="speed"]'), (value) =>
   api.put('/movement/speed', { speed: value }).then(render).catch((e) => toast(e.message, 'error')),
@@ -20,17 +21,25 @@ const servos = Object.fromEntries(servoInputs.map((input) => [input.dataset.serv
 function showMotion(m) {
   clearTimeout(readoutTimer);
   readout.classList.toggle('is-moving', m.moving);
-  readout.textContent = m.moving ? `Moving ${m.direction} (simulated)` : 'Stopped';
+  readout.textContent = m.moving ? `Moving ${m.direction} (simulated)`
+    : m.moving === null ? 'Motor stop unconfirmed' : 'Stopped';
   if (m.moving) readoutTimer = setTimeout(() => showMotion({ moving: false }), m.remaining_ms);
 }
 
 function render(m) {
   enabled = m.enabled;
-  gate.hidden = enabled;
-  moveButtons.forEach((b) => { b.disabled = !enabled; });
+  gate.hidden = mode === 'movement';
+  moveButtons.forEach((b) => { b.disabled = !enabled || m.speed === 0; });
   servoInputs.forEach((i) => { i.disabled = !enabled; });
   speed.set(m.speed);
   for (const [name, info] of Object.entries(m.servos)) servos[name]?.set(info.angle);
+  $('[data-field="permission"]').textContent = m.safety.blocked_reason
+    || (m.speed === 0 ? 'Raise motor speed to drive' : 'Movement permitted');
+  $('[data-field="estop"]').textContent = m.safety.emergency_stop ? 'Emergency stop latched'
+    : m.safety.fault || 'Emergency stop clear';
+  $('[data-field="safety-sensors"]').textContent = `Safety sensors · ${m.safety.availability}`;
+  $('[data-action="reset-safety"]').disabled = !m.safety.emergency_stop && !m.safety.fault;
+  $('[data-action="center"]').disabled = !enabled;
   showMotion(m);
 }
 
@@ -56,11 +65,24 @@ async function stop() {
 
 moveButtons.forEach((b) => b.addEventListener('click', () => move(b.dataset.move, b)));
 $$('[data-action="stop"]').forEach((b) => b.addEventListener('click', stop));
+$('[data-action="emergency-stop"]').addEventListener('click', (e) => busy(e.currentTarget, async () => {
+  try {
+    render(await api.post('/movement/emergency-stop'));
+    toast('Emergency stop latched');
+  } finally {
+    await refresh();
+  }
+}));
+$('[data-action="reset-safety"]').addEventListener('click', async (e) => {
+  await busy(e.currentTarget, async () => render(await api.post('/movement/reset-safety')));
+  await refresh();
+});
 $('[data-action="center"]').addEventListener('click', (e) => busy(e.currentTarget, async () => {
   for (const name of Object.keys(servos)) render(await api.put('/movement/servo', { servo: name, angle: 90 }));
 }));
-$('[data-action="manual"]').addEventListener('click', (e) => busy(e.currentTarget, async () => {
-  const data = await api.put('/mode', { mode: 'manual' });
+$('[data-action="movement-mode"]').addEventListener('click', (e) => busy(e.currentTarget, async () => {
+  const data = await api.put('/mode', { mode: 'movement' });
+  mode = data.mode;
   updateMode(data.mode);
   toast(`${capitalize(data.mode)} mode (simulated)`);
   render(await api.get('/movement'));
@@ -77,7 +99,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 onStatus((s) => {
-  if ((s.mode === 'manual') !== enabled) api.get('/movement').then(render).catch(() => {});
+  mode = s.mode;
+  render(s.movement);
 });
-api.get('/movement').then(render).catch((e) => toast(e.message, 'error'));
 startShell();

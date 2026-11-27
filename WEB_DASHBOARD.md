@@ -1,8 +1,8 @@
 # Eli web dashboard
 
 A lightweight, mobile-first control dashboard for Eli, served by Flask.
-Robot actions go to an **in-memory mock robot**. Productivity utilities run
-in a separate shared service inside the dashboard process. The dashboard
+Robot actions go through one **central controller with mock adapters**.
+Productivity utilities use a shared service owned by the controller. The dashboard
 never opens GPIO, SPI, the camera, the microphone, motors or the ESP32, and it
 does not import or change the AI pipeline in `main.py`. The two run
 independently.
@@ -20,11 +20,12 @@ browser (vanilla HTML/CSS/JS, no CDN)
 web/__init__.py  create_app()  ── security headers, CSRF hook, error handlers
    ├── web/auth.py        /login, /logout, login_required, CSRF, login throttle
    ├── web/pages.py       server-rendered pages (templates/*.html)
-   └── web/api.py         /api/v1/* JSON endpoints ──► RobotService
-                                                         │
-web/services/base.py      RobotService (abstract contract)
-web/services/mock_robot.py  MockRobotService (Phase 1)  ──► display.expressions,
-web/services/host_metrics.py  read-only /proc metrics      display.config (pure data)
+   └── web/api.py         /api/v1/* JSON endpoints ──► RobotService facade
+                                                        │
+controller/robot.py       RobotController ◄─────────────┘
+   ├── controller/adapters.py  simulated ports
+   └── productivity/          shared utility service
+web/services/host_metrics.py  read-only /proc metrics
 web/config.py             WebConfig.from_env()
 ```
 
@@ -37,18 +38,16 @@ web/config.py             WebConfig.from_env()
 | `web/api.py` | REST routes. They only parse JSON and call the service |
 | `web/pages.py` | Page routes and navigation definition |
 | `web/responses.py` | `{"ok": ..., "data"/"error": ...}` envelopes |
-| `web/services/` | `RobotService` contract, mock implementation and host metrics |
+| `web/services/` | Controller facade and host metrics |
+| `controller/` | Typed commands, robot modes, adapters, safety worker and internal events |
 | `productivity/` | Hardware-independent timing models, synchronized commands, scheduler and event feed |
 | `web/hash_password.py` | Generates `ELI_WEB_PASSWORD_HASH` |
 | `web/templates/` | Jinja templates (base layout, login, seven pages) |
 | `web/static/css/dashboard.css` | Theme and responsive layout |
 | `web/static/js/` | `api.js` client, `shell.js` status polling, `eyes.js` eye preview, `pages/*.js` |
 
-**Connecting the real robot later:** implement `RobotService`
-(`web/services/base.py`) with the same method names and return shapes, add it
-to `create_service()`, and allow its name in `web/config.py:BACKENDS`. Routes
-and the frontend don't change. Raise `ValidationError` (400) for bad input and
-`ConflictError` (409) for valid requests the robot can't perform right now.
+See [CONTROLLER_ARCHITECTURE.md](CONTROLLER_ARCHITECTURE.md) for runtime
+ownership, authorization, adapter contracts and future integration.
 
 The eye preview (`static/js/eyes.js`) mirrors the geometry and expression poses
 of `display/config.py`, `display/expressions.py` and `display/renderer.py`. The
@@ -86,6 +85,7 @@ Run the tests:
 ```powershell
 python -m unittest discover -s tests -p test_web.py
 python -m unittest discover -s tests -p test_productivity.py
+python -m unittest discover -s tests -p test_controller.py
 python -m unittest discover -s tests
 ```
 
@@ -112,7 +112,7 @@ as before. The two processes currently run independently.
 | `ELI_WEB_SECRET_KEY` | random per run | Session signing key, ≥ 32 characters. **Required for LAN access.** Without it, logins end when the server restarts |
 | `ELI_WEB_COOKIE_SECURE` | off | `1` sends the cookie over HTTPS only. Enable it only behind an HTTPS reverse proxy |
 | `ELI_WEB_SESSION_HOURS` | `12` | Session lifetime (1–168) |
-| `ELI_WEB_BACKEND` | `mock` | Robot service. Only `mock` exists in Phase 1 |
+| `ELI_WEB_BACKEND` | `mock` | The controller uses mock adapters |
 
 `--host` and `--port` command-line options override the matching variables.
 Never commit real values. Keep them in your shell profile or a `.env` file,
@@ -196,15 +196,17 @@ body (`Content-Type: application/json`) containing exactly the listed fields.
 | Method & path | Body | Notes |
 |---------------|------|-------|
 | `GET /status` | — | Mode, state, expression, volume, movement, capabilities, last 20 commands |
-| `GET /mode` · `PUT /mode` | `{"mode": "companion"\|"focus"\|"manual"\|"sleep"}` | Returns `previous` |
+| `GET /mode` · `PUT /mode` | `{"mode": "standby"\|"companion"\|"movement"\|"sleep"}` | Returns canonical mode and, on write, `previous` |
 | `GET /expression` · `PUT /expression` | `{"expression": "happy"}` | One of the 10 expressions in `display/expressions.py` |
 | `GET /volume` · `PUT /volume` | `{"volume": 0–100}` | Whole number |
 | `GET /settings` · `PATCH /settings` | `{"eye_color": "#RRGGBB", "animation_speed": 0.5–2.0}` | Any subset. All-or-nothing validation |
-| `GET /movement` | — | Speed, servo angles, `moving`, `enabled` (true in manual mode) |
-| `POST /movement/move` | `{"direction": "forward"\|"backward"\|"left"\|"right", "duration_ms"?: 100–5000}` | Simulated pulse (default 500 ms). Needs manual mode and speed > 0 |
+| `GET /movement` | — | Speed, servo angles, permission, safety latches and simulated sensor status |
+| `POST /movement/move` | `{"direction": "forward"\|"backward"\|"left"\|"right", "duration_ms"?: 100–5000}` | Simulated pulse (default 500 ms, capped at the two-second lease) |
 | `PUT /movement/speed` | `{"speed": 0–100}` | |
 | `POST /movement/stop` | `{}` | Always accepted, in every mode |
-| `PUT /movement/servo` | `{"servo": "head_pan" (0–180) \| "head_tilt" (45–135), "angle": n}` | Needs manual mode |
+| `POST /movement/emergency-stop` | `{}` | Stops and latches movement in any mode |
+| `POST /movement/reset-safety` | `{}` | Clears latches after a safe sensor check and successful stop |
+| `PUT /movement/servo` | `{"servo": "head_pan" (0–180) \| "head_tilt" (45–135), "angle": n}` | Needs Movement mode and a permitted control session |
 | `GET /companion` | — | Conversation, face recognition, microphone and AI status |
 | `POST /conversation` | `{"action": "start"\|"end"}` | Start needs companion mode |
 | `GET /perception` | — | Camera and recognition status (no frames, ever) |
@@ -212,7 +214,13 @@ body (`Content-Type: application/json`) containing exactly the listed fields.
 
 **Mock mode rules:** `sleep` stops motion and shows `sleeping` eyes, and
 expression changes are refused until Eli wakes. Leaving `sleep` returns to
-`idle`. Leaving `companion` ends a conversation. Leaving `manual` stops motion.
+`idle`. Leaving `companion` ends a conversation. Leaving `movement` stops motion.
+The startup mode is `standby`. For older clients, mode writes also accept
+`focus` for Standby and `manual` for Movement. Reads return canonical names.
+Separate logins share state but cannot send competing drive commands during
+the same control lease. A command can return 409 for a safety, mode, or lease
+conflict and 503 when an adapter fails. `GET /status` includes subsystem
+availability, active utilities, recent errors and the last command result.
 
 The browser UI is the intended client, since calls need the session cookie and
 CSRF token. `tests/test_web.py` shows every endpoint in use.
@@ -243,9 +251,10 @@ worker sleeps until the nearest deadline or until a command changes the
 schedule. It emits each completion once and anchors automatic Pomodoro phases
 to the previous deadline, so late wakeups do not shift the schedule.
 
-`python -m web` starts one worker and stops it when the server exits.
-Embedders using `create_app()` directly should start and stop the worker from
-the server lifecycle, using `app.extensions['eli_utilities']`. Use **one process**
+`python -m web` starts and stops the controller, which manages both workers.
+Embedders using `create_app()` directly should call `startup()` and
+`shutdown()` on `app.extensions['eli_controller']` from their server
+lifecycle. Use **one process**
 with threads. Multiple workers would have independent utility state and event
 streams. The browser can refresh, close, or disconnect while the server
 continues running. Restarting the process resets all utilities, settings,

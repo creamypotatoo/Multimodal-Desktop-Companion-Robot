@@ -38,6 +38,13 @@ async function load() {
     if (h.memory) setText($('[data-metric="memory_percent"] .metric__label'), `RAM · ${h.memory.used_mb}/${h.memory.total_mb} MB`);
     fillStatusRow('esp32', d.esp32);
     fillStatusRow('service', d.service, `${d.service.backend} backend · up ${formatDuration(d.service.uptime_s)}`);
+    const { capabilities, latest_error: failure } = d.controller;
+    for (const name of ['movement', 'safety_sensors']) {
+      fillStatusRow(name, { availability: capabilities[name] });
+    }
+    const controllerError = $('[data-field="controller-error"]');
+    controllerError.hidden = !failure;
+    controllerError.textContent = failure ? `Last controller error · ${failure.message}` : '';
     for (const [name, info] of Object.entries(d.sensors)) fillStatusRow(name, info);
     setText('[data-field="refreshed"]', `Updated ${new Date().toLocaleTimeString()}`);
   } catch (err) {

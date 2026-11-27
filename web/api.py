@@ -2,8 +2,9 @@
 
 Handlers parse JSON and delegate to the configured robot and utility services.
 """
-from flask import Blueprint, current_app, request
+from flask import Blueprint, current_app, request, session
 
+from controller import Action, Authority
 from productivity import UtilityError
 from web.auth import login_required
 from web.responses import error, ok
@@ -24,6 +25,10 @@ class UnsupportedMedia(ServiceError):
 
 def robot():
     return current_app.extensions['eli_robot']
+
+
+def operator():
+    return Authority(session.get('control_session'), can_move=True, can_wake=True)
 
 
 def body(*required, optional=()):
@@ -66,7 +71,7 @@ def get_mode():
 
 @bp.put('/mode')
 def set_mode():
-    return ok(robot().set_mode(body('mode')['mode']))
+    return ok(robot().set_mode(body('mode')['mode'], authority=operator()))
 
 
 @bp.get('/expression')
@@ -107,12 +112,12 @@ def movement():
 @bp.post('/movement/move')
 def move():
     data = body('direction', optional=('duration_ms',))
-    return ok(robot().move(data['direction'], data.get('duration_ms')))
+    return ok(robot().move(data['direction'], data.get('duration_ms'), authority=operator()))
 
 
 @bp.put('/movement/speed')
 def set_speed():
-    return ok(robot().set_speed(body('speed')['speed']))
+    return ok(robot().set_speed(body('speed')['speed'], authority=operator()))
 
 
 @bp.post('/movement/stop')
@@ -120,10 +125,20 @@ def stop():
     return ok(robot().stop())
 
 
+@bp.post('/movement/emergency-stop')
+def emergency_stop():
+    return ok(robot().command(Action.EMERGENCY_STOP))
+
+
+@bp.post('/movement/reset-safety')
+def reset_safety():
+    return ok(robot().command(Action.RESET_SAFETY, authority=operator()))
+
+
 @bp.put('/movement/servo')
 def set_servo():
     data = body('servo', 'angle')
-    return ok(robot().set_servo(data['servo'], data['angle']))
+    return ok(robot().set_servo(data['servo'], data['angle'], authority=operator()))
 
 
 @bp.get('/companion')
@@ -171,7 +186,7 @@ def utility_events():
 
 @bp.put('/utilities/<name>/settings')
 def utility_settings(name):
-    return ok(utilities().configure(name, body()))
+    return ok(robot().command(Action.UTILITY_SETTINGS, name=name, settings=body()))
 
 
 @bp.post('/utilities/<name>/actions')
@@ -179,4 +194,5 @@ def utility_action(name):
     data = body('action', optional=('duration',))
     if 'duration' in data and data['duration'] is None:
         raise BadRequest('duration must be an integer', field='duration')
-    return ok(utilities().act(name, data['action'], duration=data.get('duration')))
+    return ok(robot().command(Action.UTILITY, name=name, action=data['action'],
+                              duration=data.get('duration')))

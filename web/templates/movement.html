@@ -3,8 +3,8 @@
 {% block heading %}Movement{% endblock %}
 {% block content %}
 <div class="notice notice--warn mode-gate" data-mode-gate hidden>
-  <span>Movement controls need <strong>manual</strong> mode.</span>
-  <button class="btn btn--sm btn--primary" type="button" data-action="manual">Switch to manual</button>
+  <span>Movement controls need <strong>Movement</strong> mode.</span>
+  <button class="btn btn--sm btn--primary" type="button" data-action="movement-mode">Switch to Movement</button>
 </div>
 
 <div class="grid grid--2">
@@ -14,18 +14,20 @@
       <span class="badge badge--simulated">Simulated · no motors</span>
     </div>
     <div class="dpad" role="group" aria-label="Direction controls">
-      <button class="dpad__btn dpad__btn--up" type="button" data-move="forward" aria-label="Forward">
+      <button class="dpad__btn dpad__btn--up" type="button" data-move="forward" aria-label="Forward" disabled>
         <svg class="icon" aria-hidden="true"><use href="#i-up"></use></svg></button>
-      <button class="dpad__btn dpad__btn--left" type="button" data-move="left" aria-label="Turn left">
+      <button class="dpad__btn dpad__btn--left" type="button" data-move="left" aria-label="Turn left" disabled>
         <svg class="icon icon--rot-l" aria-hidden="true"><use href="#i-up"></use></svg></button>
       <button class="dpad__stop" type="button" data-action="stop" aria-label="Stop">
         <svg class="icon" aria-hidden="true"><use href="#i-stop"></use></svg><span>STOP</span></button>
-      <button class="dpad__btn dpad__btn--right" type="button" data-move="right" aria-label="Turn right">
+      <button class="dpad__btn dpad__btn--right" type="button" data-move="right" aria-label="Turn right" disabled>
         <svg class="icon icon--rot-r" aria-hidden="true"><use href="#i-up"></use></svg></button>
-      <button class="dpad__btn dpad__btn--down" type="button" data-move="backward" aria-label="Backward">
+      <button class="dpad__btn dpad__btn--down" type="button" data-move="backward" aria-label="Backward" disabled>
         <svg class="icon icon--rot-d" aria-hidden="true"><use href="#i-up"></use></svg></button>
     </div>
     <p class="motion-readout" role="status" aria-live="polite" data-field="motion">Stopped</p>
+    <p class="hint" role="status" data-field="permission">Checking movement permission…</p>
+    <p class="hint" data-field="safety-sensors"></p>
 
     <label class="field">
       <span class="field__row"><span class="field__label">Motor speed</span><output class="field__value" data-out="speed">—</output></span>
@@ -42,19 +44,21 @@
     </div>
     <label class="field">
       <span class="field__row"><span class="field__label">Pan</span><output class="field__value" data-out="head_pan">—</output></span>
-      <input class="range" type="range" min="0" max="180" step="1" data-servo="head_pan">
+      <input class="range" type="range" min="0" max="180" step="1" data-servo="head_pan" disabled>
     </label>
     <label class="field">
       <span class="field__row"><span class="field__label">Tilt</span><output class="field__value" data-out="head_tilt">—</output></span>
-      <input class="range" type="range" min="45" max="135" step="1" data-servo="head_tilt">
+      <input class="range" type="range" min="45" max="135" step="1" data-servo="head_tilt" disabled>
     </label>
-    <button class="btn btn--ghost" type="button" data-action="center">Center head</button>
+    <button class="btn btn--ghost" type="button" data-action="center" disabled>Center head</button>
 
     <div class="emergency">
-      <button class="btn btn--danger btn--block btn--lg" type="button" data-action="stop">
+      <button class="btn btn--danger btn--block btn--lg" type="button" data-action="emergency-stop">
         <svg class="icon" aria-hidden="true"><use href="#i-stop"></use></svg> Emergency stop
       </button>
-      <small class="hint">Stop works in every mode.</small>
+      <p class="hint" role="status" data-field="estop"></p>
+      <button class="btn btn--ghost" type="button" data-action="reset-safety" disabled>Reset safety</button>
+      <small class="hint">Stop works in every mode. Reset leaves movement stopped.</small>
     </div>
   </section>
 </div>
