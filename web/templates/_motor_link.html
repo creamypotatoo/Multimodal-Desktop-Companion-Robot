@@ -1,0 +1,37 @@
+{% macro motor_link(controls=true) %}
+<section class="card stack" data-motor-link hidden aria-label="Motor link">
+  <div class="card__head"><h2 class="card__title">Motor link</h2></div>
+  {% if controls %}
+  <div class="controls">
+    <button class="btn btn--ghost" type="button" data-motor-select="mock">Use mock motors</button>
+    <button class="btn btn--ghost" type="button" data-motor-select="esp32">Use ESP32 motors</button>
+  </div>
+  <form class="stack" data-serial-form>
+    <label class="field"><span class="field__label">Serial port</span>
+      <input class="input" name="port" list="eli-serial-ports" placeholder="COM9 or /dev/ttyUSB0" required maxlength="256">
+      <datalist id="eli-serial-ports"></datalist>
+    </label>
+    <label class="field"><span class="field__label">Baud rate</span>
+      <input class="input" name="baud" type="number" min="1200" max="1000000" required>
+    </label>
+    <div class="controls">
+      <button class="btn btn--ghost" type="button" data-serial-discover>Find serial ports</button>
+      <button class="btn btn--primary" type="submit">Connect ESP32</button>
+      <button class="btn btn--ghost" type="button" data-motor-operation="disconnect">Disconnect</button>
+    </div>
+    <p class="hint">Use Standby to connect or switch motor backends.</p>
+  </form>
+  {% endif %}
+  <dl class="stack" data-serial-readout>
+    <div><dt>Motor backend</dt><dd data-serial-backend></dd></div>
+    <div><dt>Connection</dt><dd data-serial-connection></dd></div>
+    <div><dt>Firmware and protocol</dt><dd data-serial-version></dd></div>
+    <div><dt>Heartbeat and watchdog</dt><dd data-serial-heartbeat></dd></div>
+    <div><dt>Commanded state</dt><dd data-serial-motion></dd></div>
+    <div><dt>Last acknowledged command</dt><dd data-serial-ack></dd></div>
+    <div><dt>Emergency stop</dt><dd data-serial-estop></dd></div>
+    <div><dt>Communication errors</dt><dd data-serial-error></dd></div>
+  </dl>
+  <p class="hint">ESP32 reports commanded outputs. Physical wheel movement, obstacle sensing and cliff sensing are unavailable.</p>
+</section>
+{% endmacro %}

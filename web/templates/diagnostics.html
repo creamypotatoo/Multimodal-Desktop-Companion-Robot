@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% from '_motor_link.html' import motor_link %}
 {% from '_macros.html' import status_row %}
 {% block title %}Diagnostics{% endblock %}
 {% block heading %}Diagnostics{% endblock %}
@@ -79,4 +80,5 @@
     </ul>
   </section>
 </div>
+{{ motor_link(false) }}
 {% endblock %}

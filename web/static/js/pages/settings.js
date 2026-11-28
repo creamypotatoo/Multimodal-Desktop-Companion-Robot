@@ -1,3 +1,4 @@
+import { startMotorLink } from '../motor-link.js';
 import { startVoiceAudio } from '../voice-audio.js';
 import { api } from '../api.js';
 import { mountEyes } from '../eyes.js';
@@ -119,3 +120,5 @@ onStatus((s) => {
 startShell();
 
 startVoiceAudio();
+
+startMotorLink();

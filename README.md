@@ -33,3 +33,9 @@ $env:ELI_OLLAMA_MODEL = 'qwen3:1.7b'
 
 Sign in at `http://127.0.0.1:5000/`. See [Voice and audio](VOICE_AUDIO.md) for
 dependency installation, mock launches, and the verification checklist.
+
+For physical motor integration, see [ESP32 integration](ESP32_INTEGRATION.md).
+Phase 6 manual hardware verification succeeded on Windows with the ESP32
+DOIT DEVKIT V1 connected through the CP210x bridge on COM9.
+Manual drive is available in Movement mode with a healthy ESP32 link and
+clear safety latches. Obstacle and cliff sensors unavailable. Manual floor operation only.

@@ -26,6 +26,7 @@ class Action(StrEnum):
     SETTINGS = 'settings'
     SPEED = 'speed'
     MOVE = 'move'
+    MOTOR_LINK = 'motor_link'
     STOP = 'stop'
     SERVO = 'servo'
     CONVERSATION = 'conversation'

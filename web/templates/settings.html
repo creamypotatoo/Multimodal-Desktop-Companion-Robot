@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% from '_motor_link.html' import motor_link %}
 {% from '_macros.html' import eye_preview %}
 {% block title %}Settings{% endblock %}
 {% block heading %}Settings{% endblock %}
@@ -39,7 +40,6 @@
     <section class="card" aria-labelledby="mode-title">
       <div class="card__head">
         <h2 id="mode-title" class="card__title">Operating mode</h2>
-        <span class="badge badge--simulated">Simulated</span>
       </div>
       <div class="segmented" role="radiogroup" aria-label="Operating mode" data-modes></div>
       <p class="hint" data-field="mode-hint"></p>
@@ -97,4 +97,5 @@
     </section>
   </div>
 </div>
+{{ motor_link() }}
 {% endblock %}

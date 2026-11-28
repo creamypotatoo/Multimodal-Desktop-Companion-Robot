@@ -4,14 +4,17 @@ Uses Flask's built-in threaded server with debug mode off, which is adequate
 for a single operator on a home LAN. Configuration: see ``web.config``.
 """
 import argparse
+import os
 import sys
 
+from controller import RobotController
+from controller.esp32 import ESP32MotorAdapter
 from web import create_app
 from web.config import ConfigError, WebConfig
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description='Eli web dashboard (mock robot mode)')
+    parser = argparse.ArgumentParser(description='Eli web dashboard')
     parser.add_argument('--host', help='bind address (overrides ELI_WEB_HOST)')
     parser.add_argument('--port', type=int, help='port (overrides ELI_WEB_PORT)')
     parser.add_argument('--unified', action='store_true', help='enable the unified conversation runtime')
@@ -19,6 +22,9 @@ def main(argv=None):
     parser.add_argument('--local-camera', action='store_true', help='sample a face at conversation start')
     parser.add_argument('--audio', choices=('mock', 'windows', 'pi'), help='select audio independently')
     parser.add_argument('--ai', choices=('mock', 'ollama'), help='select the conversation responder')
+    parser.add_argument('--motors', choices=('mock', 'esp32'), default='mock')
+    parser.add_argument('--serial-port', default=os.environ.get('ELI_SERIAL_PORT'))
+    parser.add_argument('--serial-baud', type=int, default=os.environ.get('ELI_SERIAL_BAUD', '115200'))
     parser.add_argument('--wake', action='store_true', help='enable wake phrase listening at startup')
     parser.add_argument('--wake-phrase', default='Hey Eli')
     parser.add_argument('--wake-in-sleep', action='store_true')
@@ -39,7 +45,8 @@ def main(argv=None):
         if 'port' in overrides and not 1 <= overrides['port'] <= 65535:
             raise ConfigError('--port must be between 1 and 65535')
         config = WebConfig.from_env(**overrides)
-    except ConfigError as exc:
+        serial_motors = ESP32MotorAdapter(args.serial_port, args.serial_baud)
+    except (ConfigError, ValueError) as exc:
         print(f'[Web] Configuration error: {exc}', file=sys.stderr, flush=True)
         return 2
     runtime = None
@@ -54,16 +61,18 @@ def main(argv=None):
                                                configured_eyes=args.local_io, camera=args.local_camera)
             runtime = UnifiedRuntime(components, announce=args.announce,
                                      announce_in_sleep=args.announce_in_sleep,
-                                     follow_up=args.follow_up, wake_cooldown=args.wake_cooldown)
+                                     follow_up=args.follow_up, wake_cooldown=args.wake_cooldown,
+                                     serial_motors=serial_motors, motor_backend=args.motors)
             runtime.configure_wake(dict(enabled=args.wake, phrase=args.wake_phrase,
                                         in_sleep=args.wake_in_sleep))
         except (ImportError, OSError, ValueError, ValidationError) as exc:
             print(f'[Runtime] Configuration error: {exc}', file=sys.stderr, flush=True)
             return 2
-    app = create_app(config, controller=runtime.controller if runtime else None)
+    app = create_app(config, controller=runtime.controller if runtime else
+                     RobotController(serial_motors=serial_motors, motor_backend=args.motors))
     if runtime is not None:
         app.extensions['eli_runtime'] = runtime
-    print(f'[Web] Eli dashboard ({config.backend} robot): '
+    print(f'[Web] Eli dashboard ({args.motors} motors): '
           f'http://{"localhost" if config.is_local else config.host}:{config.port}/', flush=True)
     if config.generated_password:
         print(f'[Web] One-time password for this run: {config.generated_password}', flush=True)

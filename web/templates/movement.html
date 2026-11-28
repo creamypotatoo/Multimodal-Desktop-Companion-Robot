@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% from '_motor_link.html' import motor_link %}
 {% block title %}Movement{% endblock %}
 {% block heading %}Movement{% endblock %}
 {% block content %}
@@ -11,7 +12,7 @@
   <section class="card card--glow" aria-labelledby="drive-title">
     <div class="card__head">
       <h2 id="drive-title" class="card__title">Drive</h2>
-      <span class="badge badge--simulated">Simulated · no motors</span>
+      <span class="badge badge--pending" data-movement-backend>Motor backend</span>
     </div>
     <div class="dpad" role="group" aria-label="Direction controls">
       <button class="dpad__btn dpad__btn--up" type="button" data-move="forward" aria-label="Forward" disabled>
@@ -25,22 +26,22 @@
       <button class="dpad__btn dpad__btn--down" type="button" data-move="backward" aria-label="Backward" disabled>
         <svg class="icon icon--rot-d" aria-hidden="true"><use href="#i-up"></use></svg></button>
     </div>
-    <p class="motion-readout" role="status" aria-live="polite" data-field="motion">Stopped</p>
+    <p class="motion-readout" role="status" aria-live="polite" data-field="motion">Commanded state unavailable</p>
     <p class="hint" role="status" data-field="permission">Checking movement permission…</p>
     <p class="hint" data-field="safety-sensors"></p>
 
     <label class="field">
       <span class="field__row"><span class="field__label">Motor speed</span><output class="field__value" data-out="speed">—</output></span>
       <input class="range" type="range" min="0" max="100" step="5" data-input="speed" aria-describedby="speed-hint">
-      <small id="speed-hint" class="hint">0–100 %. Each press sends a 0.5 s simulated pulse.</small>
+      <small id="speed-hint" class="hint" data-speed-hint></small>
     </label>
-    <p class="hint">Keyboard: arrow keys or W/A/S/D to move, Space to stop.</p>
+    <p class="hint" data-motor-keys></p>
   </section>
 
   <section class="card" aria-labelledby="servo-title">
     <div class="card__head">
       <h2 id="servo-title" class="card__title">Head servos</h2>
-      <span class="badge badge--simulated">Simulated · no servos</span>
+      <span class="badge badge--pending" data-servo-backend>Servo backend</span>
     </div>
     <label class="field">
       <span class="field__row"><span class="field__label">Pan</span><output class="field__value" data-out="head_pan">—</output></span>
@@ -58,8 +59,9 @@
       </button>
       <p class="hint" role="status" data-field="estop"></p>
       <button class="btn btn--ghost" type="button" data-action="reset-safety" disabled>Reset safety</button>
-      <small class="hint">Stop works in every mode. Reset leaves movement stopped.</small>
+      <small class="hint">Stop works in every mode. Reset does not request movement.</small>
     </div>
   </section>
 </div>
+{{ motor_link() }}
 {% endblock %}

@@ -60,7 +60,7 @@ class RuntimePorts(MockAdapter):
 
 class UnifiedRuntime:
     def __init__(self, components, *, clock=monotonic, announce=False, announce_in_sleep=False,
-                 follow_up=20.0, wake_cooldown=3.0):
+                 follow_up=20.0, wake_cooldown=3.0, serial_motors=None, motor_backend='mock'):
         self.components = components
         self.clock = clock
         if not 1 <= follow_up <= 60 or not 0.5 <= wake_cooldown <= 60:
@@ -83,7 +83,8 @@ class UnifiedRuntime:
         self.ports = RuntimePorts()
         self.controller = RobotController(clock=clock, adapters=self.ports.ports(),
                                           managed_conversation=True,
-                                          initial_volume=components.initial_volume)
+                                          initial_volume=components.initial_volume,
+                                          serial_motors=serial_motors, motor_backend=motor_backend)
         self._lifecycle = Lock()
         self._stop = Event()
         self._workers = []
@@ -94,7 +95,7 @@ class UnifiedRuntime:
         self._cleanup_worker = None
         self._eye_cleanup = None
         self._health('lifecycle', 'Stopped', UNAVAILABLE)
-        self._health('hardware', 'Mock motors, sensors and servos', SIMULATED)
+        self._health('hardware', 'See motor link and safety status', SIMULATED)
         self._health('ai', 'Fake responder' if self.mock_ai else 'Ollama not yet checked',
                      SIMULATED if self.mock_ai else UNAVAILABLE)
         self._health('audio', 'Simulated audio' if components.simulated else 'Local audio, on demand',

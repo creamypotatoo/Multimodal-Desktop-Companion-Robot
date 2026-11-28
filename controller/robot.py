@@ -2,6 +2,7 @@
 from collections import deque
 from collections.abc import Mapping
 from copy import deepcopy
+from dataclasses import replace
 from inspect import signature
 import math
 import threading
@@ -17,6 +18,7 @@ from .commands import Action, Authority, Command, CommandResult, RobotMode, Sour
 from .errors import (LIVE, SIMULATED, UNAVAILABLE, AdapterError, ConflictError, ServiceError,
                      ValidationError)
 from .events import EventStream
+from .esp32 import MAX_PULSE_MS, validate_port
 
 MODES = tuple(mode.value for mode in RobotMode)
 MODE_ALIASES = {'focus': 'standby', 'manual': 'movement'}
@@ -75,12 +77,21 @@ class RobotController:
     backend = 'mock'
 
     def __init__(self, clock=time.monotonic, wall_clock=time.time, *, adapters=None,
-                 utilities=None, lease_seconds=2.0, managed_conversation=False, initial_volume=70):
+                 utilities=None, lease_seconds=2.0, managed_conversation=False, initial_volume=70,
+                 serial_motors=None, motor_backend='mock'):
         if not math.isfinite(lease_seconds) or lease_seconds <= 0:
             raise ValueError('Control lease must have a positive, finite duration')
         self._clock = clock
         self._wall = wall_clock
         self.adapters = adapters if adapters is not None else MockAdapter().ports()
+        self._mock_motors = self.adapters.motors
+        if motor_backend not in ('mock', 'esp32') or (motor_backend == 'esp32' and serial_motors is None):
+            raise ValueError('Invalid motor backend')
+        self._serial_motors = serial_motors
+        self._serial_fault_count = self._serial_reset_count = 0
+        self._serial_reset_pending = False
+        if motor_backend == 'esp32':
+            self.adapters = replace(self.adapters, motors=serial_motors)
         self.backend = 'mock' if self.adapters.simulated else 'adapter'
         self.utilities = utilities if utilities is not None else UtilityService(clock=clock)
         self.events = EventStream()
@@ -95,7 +106,7 @@ class RobotController:
         self._expression = Expression.IDLE
         self._volume = _integer(initial_volume, 'volume', *VOLUME_RANGE)
         self._unmuted_volume = self._volume or 70
-        self._speed = 50
+        self._speed = 80 if motor_backend == 'esp32' else 50
         self._eye_color = DEFAULT_EYE_COLOR
         self._animation_speed = 1.0
         self._servos = dict.fromkeys(SERVOS, SERVO_HOME)
@@ -125,6 +136,11 @@ class RobotController:
             return CommandResult(False, 400, message='Invalid command or source', code='validation_error')
         with self._condition:
             try:
+                if (command.source is not Source.DASHBOARD and self._uses_serial()
+                        and command.action in (Action.MOVE, Action.SPEED, Action.RESET_SAFETY)):
+                    raise ConflictError('Physical movement requires an authenticated manual control session')
+                if command.action is Action.MOTOR_LINK and command.source is not Source.DASHBOARD:
+                    raise ConflictError('Motor backend controls require the dashboard')
                 if self._closed and command.action not in (Action.STATUS, Action.STOP, Action.EMERGENCY_STOP):
                     raise AdapterError('Controller is shut down')
                 handler = self.status if command.action is Action.STATUS else getattr(
@@ -163,6 +179,8 @@ class RobotController:
                 if self._worker is not None:
                     return False
                 self._closed = False
+                if self._serial_motors:
+                    self._serial_motors.startup()
                 self._stop_motion('startup')
                 self._mode = RobotMode.STANDBY
                 self._mode_revision += 1
@@ -193,6 +211,8 @@ class RobotController:
                 self._worker.join()
                 self._worker = None
             self.utilities.stop_scheduler()
+            if self._serial_motors:
+                self._serial_motors.shutdown()
             self.events.close()
 
     def _run(self):
@@ -215,6 +235,8 @@ class RobotController:
         if self._closed:
             return
         self._read_safety()
+        if self._uses_serial():
+            self._sync_serial_safety()
         caps = self.capabilities()
         for key, value in caps.items():
             if self._availability.get(key) != value:
@@ -238,6 +260,9 @@ class RobotController:
         self._utility_cursor = feed['cursor']
 
     def _read_safety(self):
+        if self._uses_serial():
+            self._sensors = SafetyReading(None, None)
+            return
         try:
             sample = self.adapters.sensors.safety()
             if not isinstance(sample, SafetyReading):
@@ -247,6 +272,14 @@ class RobotController:
             self._sensors = SafetyReading(None, None)
 
     def _unsafe_reason(self):
+        if self._uses_serial():
+            status = self._serial_motors.snapshot()
+            if status['connection'] != 'connected':
+                return 'ESP32 serial link is unavailable'
+            telemetry = status['telemetry']
+            if telemetry and not telemetry['driver_ready']:
+                return 'ESP32 driver reported a PWM fault'
+            return None
         if self._sensors.cliff is True:
             return 'Cliff detected'
         if self._sensors.obstacle is True:
@@ -267,6 +300,9 @@ class RobotController:
     def _invoke(self, subsystem, adapter, method, *args):
         try:
             getattr(adapter, method)(*args)
+        except AdapterError:
+            self.events.publish('subsystem_failed', subsystem=subsystem, operation=method)
+            raise
         except Exception:
             self.events.publish('subsystem_failed', subsystem=subsystem, operation=method)
             raise AdapterError(f'{subsystem.capitalize()} could not {method}') from None
@@ -297,6 +333,8 @@ class RobotController:
         self._stop_motion('safety_fault')
 
     def _motion_state(self):
+        if self._uses_serial():
+            return {'moving': None, 'direction': None, 'remaining_ms': 0}
         if self._stop_unknown:
             return {'moving': None, 'direction': None, 'remaining_ms': 0}
         if not self._motion:
@@ -319,7 +357,72 @@ class RobotController:
             return 'Movement safety worker is inactive'
         if self._estop:
             return 'Emergency stop is latched'
+        if self._uses_serial():
+            if self._fault:
+                return self._fault
+            unsafe = self._unsafe_reason()
+            if unsafe:
+                return unsafe
+            if self._motion or self._serial_motors.snapshot()['command_pending']:
+                return 'Wait for the current pulse or serial command'
         return self._fault or self._unsafe_reason()
+
+    def _uses_serial(self):
+        return self._serial_motors is not None and self.adapters.motors is self._serial_motors
+
+    def serial_ports(self):
+        return self._serial_motors.ports() if self._serial_motors else []
+
+    def _sync_serial_safety(self):
+        status = self._serial_motors.snapshot()
+        telemetry = status['telemetry']
+        if status['fault_count'] != self._serial_fault_count:
+            self._serial_fault_count = status['fault_count']
+            self._serial_reset_pending = False
+            self._motion = self._lease = None
+            self._latch_fault(status['error'] or 'ESP32 communication failed')
+        if telemetry and telemetry['estop']:
+            self._estop = True
+            self._motion = self._lease = None
+        if status['reset_count'] != self._serial_reset_count:
+            self._serial_reset_count = status['reset_count']
+            if self._serial_reset_pending and telemetry and not telemetry['estop'] and telemetry['driver_ready']:
+                self._estop = False
+                self._fault = None
+                self.events.publish('safety_reset')
+            self._serial_reset_pending = False
+
+    def _cmd_motor_link(self, operation, port=None, baud=None, backend=None, *, authority):
+        if not self._serial_motors:
+            raise ConflictError('Serial motor backend is unavailable')
+        if not authority.can_move or not authority.owner:
+            raise ConflictError('Motor setup requires an authenticated control session')
+        status = self._serial_motors.snapshot()
+        if operation == 'select':
+            backend = _choice(backend, 'backend', ('mock', 'esp32'))
+            if self._mode is not RobotMode.STANDBY or status['connection'] != 'disconnected':
+                raise ConflictError('Disconnect the serial link and select Standby before switching backend')
+            self.adapters = replace(self.adapters, motors=self._serial_motors if backend == 'esp32'
+                                    else self._mock_motors)
+            self._speed = 80 if backend == 'esp32' else 50
+        elif not self._uses_serial():
+            raise ConflictError('Select the ESP32 motor backend first')
+        elif operation == 'connect':
+            if self._mode is not RobotMode.STANDBY:
+                raise ConflictError('Select Standby before connecting the ESP32')
+            port = status['port'] if port is None else port
+            if not validate_port(port):
+                raise ValidationError('Select a valid serial port', field='port')
+            if baud is not None:
+                baud = _integer(baud, 'baud', 1200, 1000000)
+            self._serial_motors.connect(port, baud)
+        elif operation == 'disconnect':
+            self._serial_reset_pending = False
+            self._motion = self._lease = None
+            self._serial_motors.disconnect()
+        else:
+            raise ValidationError('Invalid motor link operation', field='operation')
+        return self._movement_snapshot()
 
     def _authorize_drive(self, authority):
         if not authority.can_move or not isinstance(authority.owner, str) or not authority.owner:
@@ -424,6 +527,10 @@ class RobotController:
         with self._lock:
             self._tick(self._clock())
             utilities = self.utilities.snapshot()
+            runtime = deepcopy(self._runtime_health)
+            if self._uses_serial():
+                runtime['hardware'] = dict(availability=self._serial_motors.availability,
+                                           detail='ESP32 serial motors; obstacle and cliff sensors unavailable')
             return {
                 'name': 'Eli',
                 'backend': self.backend,
@@ -434,7 +541,8 @@ class RobotController:
                 'conversation_active': self._conversation,
                 'movement': self._movement_snapshot(),
                 'connection': {'controller': 'stopped' if self._closed else 'available',
-                               'hardware': 'unavailable'},
+                               'hardware': (self._serial_motors.snapshot()['connection']
+                                            if self._uses_serial() else 'unavailable')},
                 'state_provenance': 'simulated' if self.adapters.simulated else 'requested',
                 'active_utilities': {name: utilities[name] for name in ('timer', 'stopwatch', 'pomodoro')
                                      if utilities[name]['state'] in ('running', 'paused')},
@@ -443,7 +551,7 @@ class RobotController:
                 'uptime_s': int(self._clock() - self._started),
                 'capabilities': self.capabilities(),
                 'history': deepcopy(list(self._history)),
-                **({'runtime': deepcopy(self._runtime_health)} if self._managed_conversation else {}),
+                **({'runtime': runtime} if self._managed_conversation else {}),
             }
 
     def capabilities(self):
@@ -453,14 +561,14 @@ class RobotController:
             'volume': self._runtime_health.get('audio', {}).get(
                 'availability', self._availability_of(self.adapters.audio)),
             'movement': self._availability_of(self.adapters.motors),
-            'servos': self._availability_of(self.adapters.servos),
+            'servos': UNAVAILABLE if self._uses_serial() else self._availability_of(self.adapters.servos),
             'conversation': self._runtime_health.get('conversation', {}).get(
                 'availability', self._availability_of(self.adapters.conversation)),
             'camera': self._runtime_health.get('camera', {}).get('availability', UNAVAILABLE),
             'microphone': self._runtime_health.get('microphone', {}).get('availability', UNAVAILABLE),
             'face_recognition': UNAVAILABLE,
             'ai': self._runtime_health.get('ai', {}).get('availability', UNAVAILABLE),
-            'esp32': UNAVAILABLE,
+            'esp32': self._serial_motors.availability if self._uses_serial() else UNAVAILABLE,
             'safety_sensors': (self._availability_of(self.adapters.sensors)
                                if self._sensors.obstacle is not None and self._sensors.cliff is not None
                                else UNAVAILABLE),
@@ -481,7 +589,7 @@ class RobotController:
                     or mode is RobotMode.MOVEMENT and not authority.can_move):
                 raise ConflictError('This mode transition requires authorization')
             if previous is RobotMode.MOVEMENT or mode is RobotMode.SLEEP:
-                if not self._stop_motion('mode_transition'):
+                if not self._stop_motion('mode_transition') and not self._uses_serial():
                     raise AdapterError('Motor stop could not be confirmed')
             self._change_conversation(False)
             self._mode = mode
@@ -597,6 +705,9 @@ class RobotController:
             'directions': list(DIRECTIONS), 'enabled': block is None,
             'availability': capabilities['movement'],
             'servo_availability': capabilities['servos'],
+            'serial': (self._serial_motors.snapshot() if self._serial_motors else None),
+            'motor_backend': 'esp32' if self._uses_serial() else 'mock',
+            'physical_motion': 'unavailable',
             'safety': {'emergency_stop': self._estop, 'fault': self._fault,
                        'blocked_reason': block, 'control_leased': self._lease is not None,
                        'obstacle': self._sensors.obstacle, 'cliff': self._sensors.cliff,
@@ -610,8 +721,9 @@ class RobotController:
 
     def _cmd_move(self, direction, duration_ms=None, *, authority):
         direction = _choice(direction, 'direction', DIRECTIONS)
-        duration = DEFAULT_DURATION_MS if duration_ms is None else (
-            _integer(duration_ms, 'duration_ms', *DURATION_RANGE))
+        duration = (250 if self._uses_serial() else DEFAULT_DURATION_MS) if duration_ms is None else (
+            _integer(duration_ms, 'duration_ms', DURATION_RANGE[0],
+                     MAX_PULSE_MS if self._uses_serial() else DURATION_RANGE[1]))
         self._authorize_drive(authority)
         block = self._movement_block()
         if block:
@@ -629,7 +741,7 @@ class RobotController:
         except AdapterError:
             self._fault_stop('Motor move failed')
             raise
-        self._motion = {'direction': direction, 'until': now + duration / 1000}
+        self._motion = {'direction': direction, 'until': now + (limit if self._uses_serial() else duration) / 1000}
         self._lease = (authority.owner, now + self._lease_seconds)
         self._record('move', direction=direction, duration_ms=limit, speed=self._speed)
         self.events.publish('movement_requested', direction=direction, duration_ms=limit, speed=self._speed)
@@ -649,11 +761,18 @@ class RobotController:
         self._record('stop')
         if not self._stop_motion('operator_stop'):
             raise AdapterError('Motor stop could not be confirmed')
+        if self._uses_serial() and self._serial_motors.snapshot()['connection'] == 'disconnected':
+            raise AdapterError('STOP could not be sent; ESP32 is disconnected')
         return self.movement()
 
     def _cmd_emergency_stop(self):
         self._estop = True
+        self._serial_reset_pending = False
         self.events.publish('emergency_stop', active=True)
+        if self._uses_serial():
+            self._motion = self._lease = None
+            self._invoke('motors', self._serial_motors, 'emergency_stop')
+            return self._movement_snapshot()
         if not self._stop_motion('emergency_stop'):
             raise AdapterError('Emergency stop requested; motor stop could not be confirmed')
         return self.movement()
@@ -664,6 +783,11 @@ class RobotController:
         block = self._unsafe_reason()
         if block:
             raise ConflictError(block)
+        if self._uses_serial():
+            self._motion = self._lease = None
+            self._serial_motors.reset_safety()
+            self._serial_reset_pending = True
+            return self._movement_snapshot()
         if not self._stop_motion('safety_reset'):
             raise AdapterError('Motor stop could not be confirmed')
         self._estop = False
@@ -675,6 +799,8 @@ class RobotController:
         servo = _choice(servo, 'servo', tuple(SERVOS))
         angle = _integer(angle, 'angle', *SERVOS[servo])
         self._authorize_drive(authority)
+        if self._uses_serial():
+            raise ConflictError('The ESP32 motor backend does not control servos')
         block = self._movement_block()
         if block:
             raise ConflictError(block)

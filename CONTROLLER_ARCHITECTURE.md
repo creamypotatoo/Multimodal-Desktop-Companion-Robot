@@ -1,5 +1,10 @@
 # Eli controller architecture
 
+The optional [ESP32 integration](ESP32_INTEGRATION.md) uses the same movement
+policy and controller. Its worker owns the serial port and publishes firmware
+command acknowledgments. Only an authenticated dashboard control session can
+issue physical movement in Movement mode. Control leases govern ownership.
+
 ## Ownership and lifecycle
 
 Flask creates one RobotController per application process. The existing

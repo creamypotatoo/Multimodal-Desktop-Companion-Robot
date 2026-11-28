@@ -109,6 +109,17 @@ def movement():
     return ok(robot().movement())
 
 
+@bp.get('/movement/ports')
+def serial_ports():
+    return ok(dict(ports=robot().controller.serial_ports()))
+
+
+@bp.post('/movement/link')
+def motor_link():
+    data = body('operation', optional=('port', 'baud', 'backend'))
+    return ok(robot().command(Action.MOTOR_LINK, authority=operator(), **data))
+
+
 @bp.post('/movement/move')
 def move():
     data = body('direction', optional=('duration_ms',))

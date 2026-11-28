@@ -16,8 +16,8 @@ class MockRobotService(RobotService):
                            else RobotController(clock=clock, wall_clock=wall_clock, utilities=utilities))
         self._metrics = metrics if metrics is not None else HostMetrics()
 
-    def command(self, operation, *, authority=Authority(), **args):
-        result = self.controller.execute(Command(operation, Source.DASHBOARD, args), authority)
+    def command(self, action_type, *, authority=Authority(), **args):
+        result = self.controller.execute(Command(action_type, Source.DASHBOARD, args), authority)
         if not result.ok:
             exc = ServiceError(result.message, field=result.field)
             exc.status, exc.code = result.status, result.code
@@ -79,10 +79,14 @@ class MockRobotService(RobotService):
     def diagnostics(self):
         components = ('camera', 'microphone', 'speaker', 'tft_display')
         status = self.controller.status()
+        serial = status['movement']['serial']
+        connected = bool(serial and serial['connection'] == 'connected')
         return {
             'host': self._metrics.snapshot(),
-            'esp32': {'availability': UNAVAILABLE, 'detail': 'ESP32 link is unavailable.',
-                      'connected': False},
+            'esp32': {'availability': status['capabilities']['esp32'],
+                      'detail': (serial['connection'] if serial else 'ESP32 link is unavailable.'),
+                      'connected': connected},
+            'movement': status['movement'],
             'sensors': {name: {'availability': UNAVAILABLE, 'detail': 'Hardware is unavailable.'}
                         for name in components},
             'service': {'backend': self.backend, 'availability': SIMULATED,

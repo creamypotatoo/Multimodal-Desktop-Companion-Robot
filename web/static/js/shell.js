@@ -1,7 +1,7 @@
 // Shared page shell: polls /status, drives the connection and mode pills and
 // notifies page modules. Polling pauses while the tab is hidden.
 import { api } from './api.js';
-import { $ } from './ui.js';
+import { $, setBadge } from './ui.js';
 
 const POLL_MS = 4000;
 const listeners = new Set();
@@ -27,6 +27,12 @@ export async function refresh() {
   try {
     latest = await api.get('/status');
     setConnection('online', 'Online');
+    const motors = $('[data-motor-badge]');
+    if (motors) {
+      const physical = latest.movement.motor_backend === 'esp32';
+      setBadge(motors, latest.movement.availability);
+      motors.textContent = physical ? `ESP32 · ${latest.movement.serial.connection}` : 'Motors simulated';
+    }
     updateMode(latest.mode);
     listeners.forEach((fn) => fn(latest));
   } catch (err) {

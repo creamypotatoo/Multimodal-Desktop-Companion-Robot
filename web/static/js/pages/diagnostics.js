@@ -1,3 +1,4 @@
+import { startMotorLink } from '../motor-link.js';
 import { startVoiceAudio } from '../voice-audio.js';
 import { api } from '../api.js';
 import { startShell } from '../shell.js';
@@ -68,3 +69,5 @@ $$('.metric').forEach((m) => m.setAttribute('aria-live', 'off'));
 startShell();
 
 startVoiceAudio();
+
+startMotorLink();
