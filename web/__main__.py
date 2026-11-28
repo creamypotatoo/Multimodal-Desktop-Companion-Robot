@@ -19,7 +19,11 @@ def main(argv=None):
     parser.add_argument('--port', type=int, help='port (overrides ELI_WEB_PORT)')
     parser.add_argument('--unified', action='store_true', help='enable the unified conversation runtime')
     parser.add_argument('--local-io', action='store_true', help='use local audio, AI and configured eyes')
-    parser.add_argument('--local-camera', action='store_true', help='sample a face at conversation start')
+    parser.add_argument('--local-camera', action='store_true', help='enable explicit camera controls in Perception')
+    parser.add_argument('--face-threshold', type=float, default=50.0, help='maximum LBPH distance (exclusive)')
+    parser.add_argument('--face-model', default='data/trained_model.yml')
+    parser.add_argument('--face-labels', default='data/labels.txt')
+    parser.add_argument('--expression-model', help='optional local FER+ ONNX model')
     parser.add_argument('--audio', choices=('mock', 'windows', 'pi'), help='select audio independently')
     parser.add_argument('--ai', choices=('mock', 'ollama'), help='select the conversation responder')
     parser.add_argument('--motors', choices=('mock', 'esp32'), default='mock')
@@ -36,8 +40,8 @@ def main(argv=None):
     if (args.local_io or args.announce or args.announce_in_sleep or args.audio or args.ai
             or args.wake or args.wake_in_sleep) and not args.unified:
         parser.error('Runtime options require --unified')
-    if args.local_camera and not args.local_io:
-        parser.error('--local-camera requires --local-io')
+    if args.local_camera and not args.unified:
+        parser.error('--local-camera requires --unified')
     if args.announce_in_sleep and not args.announce:
         parser.error('--announce-in-sleep requires --announce')
     overrides = {k: v for k, v in (('host', args.host), ('port', args.port)) if v is not None}
@@ -59,6 +63,17 @@ def main(argv=None):
             ai_backend = args.ai or ('ollama' if args.local_io else 'mock')
             components = configured_components(audio_backend, ai_backend,
                                                configured_eyes=args.local_io, camera=args.local_camera)
+            if args.local_camera:
+                from functools import partial
+                from math import isfinite
+                from intelligence.recognize import load_recognizer
+                if not isfinite(args.face_threshold) or args.face_threshold <= 0:
+                    raise ValueError('Face threshold must be positive and finite')
+                components.camera.recognizer = partial(load_recognizer, args.face_model,
+                                                       args.face_labels, args.face_threshold)
+                if args.expression_model:
+                    from intelligence.emotion import load_classifier
+                    components.camera.classifier = partial(load_classifier, args.expression_model)
             runtime = UnifiedRuntime(components, announce=args.announce,
                                      announce_in_sleep=args.announce_in_sleep,
                                      follow_up=args.follow_up, wake_cooldown=args.wake_cooldown,

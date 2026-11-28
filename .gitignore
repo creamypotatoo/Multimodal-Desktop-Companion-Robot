@@ -32,6 +32,7 @@ data/models/
 .env
 # Private face-recognition data
 data/trained_model.yml
+/data/labels.txt.bak
 data/enrolment_runs/
 data/face_validation/
 

@@ -1,7 +1,22 @@
 """Configurable, verified OpenCV capture without model or audio imports."""
 from dataclasses import dataclass
+from pathlib import Path
 import platform
 import cv2
+
+
+def load_face_cascade():
+    filename = 'haarcascade_frontalface_default.xml'
+    bundled = getattr(getattr(cv2, 'data', None), 'haarcascades', None)
+    paths = [Path('/usr/share/opencv4/haarcascades') / filename]
+    if bundled:
+        paths.insert(0, Path(bundled) / filename)
+    for path in paths:
+        if path.is_file():
+            detector = cv2.CascadeClassifier(str(path))
+            if not detector.empty():
+                return detector
+    raise RuntimeError('OpenCV face cascade unavailable')
 
 
 @dataclass(frozen=True)

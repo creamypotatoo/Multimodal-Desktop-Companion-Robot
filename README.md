@@ -39,3 +39,11 @@ Phase 6 manual hardware verification succeeded on Windows with the ESP32
 DOIT DEVKIT V1 connected through the CP210x bridge on COM9.
 Manual drive is available in Movement mode with a healthy ESP32 link and
 clear safety latches. Obstacle and cliff sensors unavailable. Manual floor operation only.
+
+For the authenticated camera preview, optional face recognition, eye tracking
+and conversation context, see [Perception integration](PERCEPTION_INTEGRATION.md).
+Launch with `--local-camera` and start capture from Perception.
+Phase 7 passed Windows manual verification for discovery and live preview,
+face detection, registered identity recognition and expiration, animated gaze,
+wake and identity-aware conversation with capture active, and repeated start
+and stop. Raspberry Pi camera and TFT operation still require verification.

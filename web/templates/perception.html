@@ -1,5 +1,4 @@
 {% extends 'base.html' %}
-{% from '_macros.html' import status_row %}
 {% block title %}Perception{% endblock %}
 {% block heading %}Perception{% endblock %}
 {% block content %}
@@ -7,24 +6,38 @@
   <section class="card" aria-labelledby="cam-title">
     <div class="card__head">
       <h2 id="cam-title" class="card__title">Camera preview</h2>
-      <span class="badge badge--unavailable">Unavailable</span>
+      <span class="badge badge--unavailable" data-camera-state>Unavailable</span>
     </div>
-    <div class="camera-placeholder" role="img" aria-label="Camera preview unavailable">
+    <form data-camera-form hidden>
+      <label>Camera device <input name="device" list="camera-devices" maxlength="16" required></label>
+      <datalist id="camera-devices"></datalist>
+      <button class="btn btn--ghost" type="button" data-camera-discover>Find cameras</button>
+      <div class="camera-settings">
+        <label>Width <input name="width" type="number" min="160" max="1920" required></label>
+        <label>Height <input name="height" type="number" min="120" max="1080" required></label>
+        <label>FPS <input name="fps" type="number" min="1" max="30" required></label>
+      </div>
+      <button class="btn btn--primary" type="submit">Start camera</button>
+      <button class="btn btn--ghost" type="button" data-camera-stop disabled>Stop camera</button>
+    </form>
+    <div class="camera-placeholder" data-camera-placeholder>
       <svg class="icon icon--xl" aria-hidden="true"><use href="#i-camera"></use></svg>
       <strong>No camera feed</strong>
-      <span data-field="camera-detail">The dashboard never streams or stores camera frames.</span>
     </div>
+    <img class="camera-preview" data-camera-preview alt="Live camera preview with detected face overlays" hidden>
+    <p role="status" data-camera-detail></p>
+    <p class="hint" data-camera-format></p>
+    <p class="hint">The preview is available to signed-in dashboard users. Eli does not save frames.</p>
   </section>
-
   <section class="card" aria-labelledby="rec-title">
-    <div class="card__head"><h2 id="rec-title" class="card__title">Recognition</h2></div>
-    <ul class="status-list">
-      {{ status_row('recognition', 'face', 'Face recognition') }}
-    </ul>
+    <div class="card__head"><h2 id="rec-title" class="card__title">Face perception</h2></div>
     <dl class="kv">
-      <div><dt>Identity</dt><dd data-field="identity">—</dd></div>
+      <div><dt>Detection</dt><dd data-face-detection>Unavailable</dd></div>
+      <div><dt>Identity</dt><dd data-face-identity>Unavailable</dd></div>
+      <div><dt>LBPH distance</dt><dd data-face-distance>Unavailable</dd></div>
+      <div data-face-expression-row hidden><dt>Experimental expression estimate</dt><dd data-face-expression></dd></div>
     </dl>
-    <p class="hint">OpenCV face recognition runs separately in main.py.</p>
+    <canvas class="eye-canvas" data-eye-preview aria-label="Animated eyes"></canvas>
   </section>
 </div>
 {% endblock %}

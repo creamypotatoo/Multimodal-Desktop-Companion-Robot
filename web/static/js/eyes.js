@@ -69,6 +69,11 @@ export class EyePreview {
 
   setColor(color) { if (/^#[0-9a-f]{6}$/i.test(color)) this.color = color; }
   setSpeed(speed) { if (speed > 0) this.speed = speed; }
+  setGaze(target) {
+    if (target == null && this.manualGaze == null) return;
+    this.manualGaze = target;
+    if (target == null) this.wanderAt = 0;
+  }
 
   _step(now, dt) {
     const s = this.spec, k = 1 - Math.exp(-dt * this.speed / 0.14), kg = 1 - Math.exp(-dt * this.speed / 0.07);
@@ -84,7 +89,8 @@ export class EyePreview {
     } else if (!s.wander || this.reduced) {
       this.gazeTarget = s.gaze || [0, 0];
     }
-    this.gaze = this.gaze.map((g, i) => g + (this.gazeTarget[i] - g) * kg);
+    const target = (!this.reduced && this.manualGaze) || this.gazeTarget;
+    this.gaze = this.gaze.map((g, i) => g + (target[i] - g) * kg);
     // Blink: 0.09 close, 0.05 hold, 0.14 open (AnimationConfig).
     if (now >= this.blinkAt && this.blinkStart < 0) this.blinkStart = now;
     let blink = 1;

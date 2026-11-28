@@ -74,7 +74,8 @@ def configured_components(audio='mock', ai='mock', *, configured_eyes=False, cam
     if configured_eyes:
         components = replace(components, eyes=eyes)
     if camera:
-        components = replace(components, profile=local_profile)
+        from perception.service import CameraService
+        components = replace(components, camera=CameraService())
     if audio == 'mock':
         return components
     config = TTSConfig.from_env(backend='pyttsx3' if audio == 'windows' else None)
@@ -127,45 +128,3 @@ def configured_components(audio='mock', ai='mock', *, configured_eyes=False, cam
                    audio_info=dict(inputs=inputs, default_input=default_input, output=output, sample_rate=rate,
                                    stt='faster-whisper' if audio == 'windows' else 'whisper.cpp',
                                    tts=config.backend))
-
-
-def local_profile(current):
-    """Capture a bounded sample on the conversation worker and release before audio."""
-    from main import IDENTITY_CONFIRM_FRAMES, load_emotion, load_vision, recognize_frame
-    from perception.camera import Camera
-    from intelligence.memory import get_person_info, remember_encounter
-
-    if not current():
-        return None
-    cascade, recognize = load_vision()
-    identity = None
-    count = 0
-    with Camera() as camera:
-        for _ in range(12):
-            if not current():
-                return None
-            ok, frame = camera.read()
-            if not ok:
-                raise RuntimeError('Camera read failed')
-            name, _, _, crop = recognize_frame(frame, cascade, recognize)
-            if not name or name == 'Unknown':
-                identity, count = None, 0
-                continue
-            count = count + 1 if name == identity else 1
-            identity = name
-            if count >= IDENTITY_CONFIRM_FRAMES:
-                break
-    if count < IDENTITY_CONFIRM_FRAMES or not current():
-        return {}
-    profile = dict(person_name=identity)
-    try:
-        profile['emotion'] = load_emotion()(crop)
-    except Exception:
-        pass  # Emotion recognition is optional.
-    if current():
-        try:
-            remember_encounter(identity)
-            profile['visit_count'] = (get_person_info(identity) or {}).get('visit_count')
-        except Exception:
-            pass  # Memory must not prevent a recognized conversation.
-    return profile

@@ -115,7 +115,7 @@ class AppFactoryTests(WebTestCase):
             self.assertEqual(response.status_code, 200, path)
             html = response.get_data(as_text=True)
             self.assertIn('name="csrf-token"', html)
-            self.assertIn('Mock mode', html)
+            self.assertIn('Subsystem availability', html)
 
     def test_static_assets_are_local(self):
         for path in ('/static/css/dashboard.css', '/static/js/api.js', '/static/js/eyes.js',

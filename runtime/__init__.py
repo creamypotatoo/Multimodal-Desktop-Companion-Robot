@@ -43,6 +43,7 @@ class Components:
     audio_backend: str = 'mock'
     ai_simulated: bool | None = None
     audio_info: object = None
+    camera: object = None
 
 
 class RuntimePorts(MockAdapter):
@@ -62,6 +63,7 @@ class UnifiedRuntime:
     def __init__(self, components, *, clock=monotonic, announce=False, announce_in_sleep=False,
                  follow_up=20.0, wake_cooldown=3.0, serial_motors=None, motor_backend='mock'):
         self.components = components
+        self.camera = components.camera
         self.clock = clock
         if not 1 <= follow_up <= 60 or not 0.5 <= wake_cooldown <= 60:
             raise ValueError('Follow-up window must be 1–60s and wake cooldown 0.5–60s')
@@ -305,13 +307,16 @@ class UnifiedRuntime:
                 self._health('lifecycle', 'Stopped', UNAVAILABLE)
 
     def _schedule_cleanup(self):
-        pending = self._workers or (self._eye_cleanup is not None and self._eye_cleanup.is_alive())
+        pending = self.camera is not None or self._workers or (
+            self._eye_cleanup is not None and self._eye_cleanup.is_alive())
         if pending and (self._cleanup_worker is None or not self._cleanup_worker.is_alive()):
             self._cleanup_worker = Thread(target=self._reap_workers,
                                           name='eli-runtime-cleanup', daemon=True)
             self._cleanup_worker.start()
 
     def _finish_shutdown(self):
+        if self.camera is not None and not self.camera.shutdown():
+            return
         for worker in self._workers:
             worker.join(timeout=0.5)
         self._workers = [worker for worker in self._workers if worker.is_alive()]
@@ -350,12 +355,14 @@ class UnifiedRuntime:
                 if not self._owns_resources:
                     self._health('lifecycle', 'Stopped', UNAVAILABLE)
                     return
-            if not self._workers and (self._eye_cleanup is None or not self._eye_cleanup.is_alive()):
+            if self.camera is None and not self._workers and (self._eye_cleanup is None or not self._eye_cleanup.is_alive()):
                 return  # An eye resource reported failure. Hold ownership until explicit retry.
             Event().wait(POLL)
 
     def _render_eyes(self):
         previous = None
+        gaze = None
+        camera_health = None
         while not self._stop.is_set():
             with self._audio_lock:
                 self._expire_transcripts()
@@ -366,6 +373,26 @@ class UnifiedRuntime:
                 except Exception:
                     self._health('eyes', 'Eye expression update failed', UNAVAILABLE)
                 previous = expression
+            target = None
+            if self.camera is not None:
+                snapshot = self.camera.snapshot()
+                camera = snapshot['camera']
+                health = (camera['detail'], (SIMULATED if camera['simulated'] else LIVE)
+                          if camera['state'] == 'active' else UNAVAILABLE)
+                if health != camera_health:
+                    self._health('camera', *health)
+                    camera_health = health
+                if expression in ('idle', 'listening'):
+                    target = snapshot['recognition']['gaze']
+            if self._eyes is not None and target != gaze:
+                try:
+                    if target is None:
+                        self._eyes.release_gaze()
+                    else:
+                        self._eyes.set_gaze(*target)
+                    gaze = target
+                except Exception:
+                    self._health('eyes', 'Eye gaze update failed', UNAVAILABLE)
             if self._eyes is not None and getattr(self._eyes, 'last_error', None):
                 self._health('eyes', 'Eye engine reported a display error', UNAVAILABLE)
             self._stop.wait(POLL)
@@ -489,14 +516,19 @@ class UnifiedRuntime:
         return (reply if result.ok else result.message) if result else 'Request cancelled.'
 
     def _new_session(self, generation, current):
-        try:
-            profile = self.components.profile(current)
-        except Exception:
-            self._health('camera', 'Camera or face recognition unavailable', UNAVAILABLE)
-            profile = {}
+        visual = None
+        if self.camera is not None:
+            visual = self.camera.snapshot()['recognition']
+            profile = {'person_name': visual['identity']}
         else:
-            if profile is not None:
-                self._health('camera', 'Last session camera capture completed')
+            try:
+                profile = self.components.profile(current)
+            except Exception:
+                self._health('camera', 'Camera or face recognition unavailable', UNAVAILABLE)
+                profile = {}
+            else:
+                if profile is not None:
+                    self._health('camera', 'Last session camera capture completed')
         fsm = RobotStateMachine()
         fsm.add_listener(lambda old, new: self.controller.publish_behavior(generation, new))
         def respond(text, name, history=(), context=None):
@@ -512,7 +544,9 @@ class UnifiedRuntime:
             is_current=current, log_transcripts=False,
             **(profile or {}),
         )
-        if session.person_name:
+        if visual is not None:
+            session.context.update(face_present=visual['face_present'], identity_status=visual['identity_status'])
+        elif session.person_name:
             session.say(greeting_for(session.person_name, session.visit_count))
         return session
 

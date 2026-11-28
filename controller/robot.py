@@ -858,7 +858,7 @@ class RobotController:
     # ----- perception and diagnostics -----
     def perception(self):
         return {
-            'camera': {**_unavailable('Camera preview is not available. The dashboard never '
-                                      'streams or stores camera frames.'), 'preview': None},
+            'camera': {**_unavailable('Launch the unified runtime with --local-camera to enable '
+                                      'camera controls.'), 'preview': None},
             'recognition': {**_unavailable(), 'identity': None},
         }

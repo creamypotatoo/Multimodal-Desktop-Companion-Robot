@@ -19,15 +19,15 @@ IDENTITY_CONFIRM_FRAMES = 3
 def load_vision():
     # Existing loader reads data/trained_model.yml and keeps threshold 50.
     from perception.face import face_cascade
-    from intelligence.recognize import recognize_face
+    from intelligence.recognize import load_recognizer
     if face_cascade.empty():
         raise RuntimeError('Face cascade did not load')
-    return face_cascade, recognize_face
+    return face_cascade, load_recognizer()
 
 
 def load_emotion():
-    from intelligence.emotion import detect_emotion
-    return detect_emotion
+    from intelligence.emotion import load_classifier
+    return load_classifier()
 
 
 def load_conversation():

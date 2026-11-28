@@ -76,6 +76,16 @@ def build_system_prompt(person_name=None, context=None, base_prompt=None):
         lines.append(f"You are talking with {person_name}, who was recognised by face.")
     else:
         lines.append("You do not know the name of the person you are talking with.")
+    if context.get("face_present") is True:
+        lines.append("At session start, face detection found at least one face.")
+        if context.get("identity_status") == "unknown":
+            lines.append("Recognition returned an unknown identity.")
+        elif not person_name:
+            lines.append("No single confirmed identity was available.")
+    elif context.get("face_present") is False:
+        lines.append("At session start, face detection found no faces.")
+    elif "face_present" in context:
+        lines.append("Face detection information was unavailable at session start.")
     visit_count = context.get("visit_count")
     if isinstance(visit_count, int) and visit_count > 1:
         lines.append(f"They have visited you {visit_count} times, "

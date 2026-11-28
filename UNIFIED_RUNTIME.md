@@ -91,10 +91,11 @@ Activate its Python environment and use this opt-in command from the repo:
 ELI_DISPLAY_BACKEND=tft python -m web --unified --local-io --announce --host 127.0.0.1 --port 5000
 ```
 
-Add `--local-camera` to opt into a short face-recognition sample at the start
-of each session using the existing private trained model, emotion detector,
-and visit memory. Camera/model failures allow an anonymous session. The
-sample is bounded by frame count; driver calls can take time to return.
+Add `--local-camera` to enable the shared camera controls on Perception.
+Capture starts when an operator explicitly turns it on. New conversations
+can use the latest face-detection and identity state. See
+[Perception integration](PERCEPTION_INTEGRATION.md) for camera and model setup
+and the completed Windows manual checks.
 Local I/O has yet to be verified on the Pi. Use the mock launch for review.
 
 Phase 5 adds wake initiation and typed voice routing through the same
@@ -116,5 +117,5 @@ transport and independently enforced hardware safety.
 & $py -m unittest discover -s tests
 ```
 
-The full test suite requires the private trained face model for its existing
-emotion test. Runtime tests use injected fake components.
+The full suite runs without private models. Runtime tests use injected fake
+components and the LBPH test trains on a synthetic crop.

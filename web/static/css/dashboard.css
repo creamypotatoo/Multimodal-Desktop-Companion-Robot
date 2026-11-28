@@ -333,3 +333,8 @@ a { color: var(--cyan); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
 }
+
+.camera-preview { display: block; width: 100%; height: auto; border-radius: 14px; }
+.camera-settings { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+[data-camera-form] { margin-bottom: 12px; }
+[data-camera-form] input { max-width: 100%; }

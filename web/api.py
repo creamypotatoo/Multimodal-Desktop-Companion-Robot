@@ -2,7 +2,7 @@
 
 Handlers parse JSON and delegate to the configured robot and utility services.
 """
-from flask import Blueprint, current_app, request, session
+from flask import Blueprint, Response, current_app, request, session
 
 from controller import Action, Authority
 from productivity import UtilityError
@@ -164,7 +164,54 @@ def conversation():
 
 @bp.get('/perception')
 def perception():
-    return ok(robot().perception())
+    camera = perception_camera()
+    return ok(camera.snapshot() if camera else robot().perception())
+
+
+def perception_camera():
+    return getattr(current_app.extensions.get('eli_runtime'), 'camera', None)
+
+
+@bp.get('/perception/devices')
+def perception_devices():
+    camera = perception_camera()
+    return ok(camera.devices() if camera else {'devices': [], 'scanning': False, 'error': None})
+
+
+@bp.post('/perception/devices')
+def perception_discover():
+    camera = perception_camera()
+    if camera is None:
+        raise ConflictError('Camera discovery requires --local-camera')
+    return ok(camera.discover())
+
+
+@bp.post('/perception/camera')
+def perception_camera_control():
+    data = body('action', optional=('device', 'width', 'height', 'fps'))
+    camera = perception_camera()
+    if camera is None:
+        raise ConflictError('Launch the unified runtime with --local-camera')
+    action = data.pop('action')
+    if action == 'stop':
+        camera.stop()
+    elif action == 'start':
+        try:
+            camera.start(**data)
+        except ValueError as exc:
+            raise BadRequest(str(exc)) from exc
+        except RuntimeError as exc:
+            raise ConflictError(str(exc)) from exc
+    else:
+        raise BadRequest('Select start or stop')
+    return ok(camera.snapshot())
+
+
+@bp.get('/perception/frame')
+def perception_frame():
+    camera = perception_camera()
+    frame = camera.preview() if camera else None
+    return Response(frame, mimetype='image/jpeg') if frame else Response(status=204)
 
 
 @bp.get('/diagnostics')
