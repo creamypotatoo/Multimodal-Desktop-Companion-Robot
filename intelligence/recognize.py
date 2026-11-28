@@ -6,7 +6,7 @@ import cv2
 
 MODEL_PATH = Path('data/trained_model.yml')
 LABELS_PATH = Path('data/labels.txt')
-CONFIDENCE_THRESHOLD = 50
+CONFIDENCE_THRESHOLD = 70
 
 
 def load_recognizer(model=MODEL_PATH, labels=LABELS_PATH, threshold=CONFIDENCE_THRESHOLD):

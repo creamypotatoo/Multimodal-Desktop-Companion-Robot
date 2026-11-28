@@ -21,7 +21,11 @@ unchanged. No flashing is required.
 The ESP32 uses LF-terminated ASCII JSON at 115200 baud, 8N1, without flow
 control. Each host command gets a unique ID. The worker validates response
 shapes, discards other IDs, and uses a bounded read and write timeout.
-Connect sends hello, heartbeat, and status. Hello already removes drive.
+Connect allows a three-second stabilization interval after opening the port,
+then clears serial input and the host parser before sending hello, heartbeat,
+and status. Disconnect or runtime shutdown cancels the wait and closes the
+port after a best-effort safety stop. Malformed replies after the flush
+remain faults. Hello already removes drive.
 Only move, heartbeat, and reset_safety carry the negotiated session token.
 
 The host targets 200 ms heartbeats while the session is armed. Status polls
@@ -144,5 +148,10 @@ If negotiation fails, confirm 115200 baud and firmware protocol v1 against
 the firmware bench tool with motor power disconnected. For a latched or
 unknown state, check Diagnostics and use the physical disconnect as needed.
 
-Automated tests use fake firmware and serial transport. Physical verification
-was manual. Raspberry Pi serial operation has yet to be verified on hardware.
+Automated tests use fake firmware and serial transport. The project owner
+confirmed Raspberry Pi 4 integration and manual ESP32 motor control after a
+temporary three-second post-open wait and input-buffer flush resolved
+`Malformed ESP32 response`. Startup bytes or a partial frame from USB serial
+initialization are the likely cause. The original bytes were not captured.
+The permanent cancellation and cleanup paths are covered by automated tests.
+Confirm the permanent patch on the Pi with motor power disconnected first.

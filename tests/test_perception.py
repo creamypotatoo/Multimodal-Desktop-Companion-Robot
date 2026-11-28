@@ -4,6 +4,7 @@ from threading import Event
 from time import monotonic, sleep
 from types import SimpleNamespace
 import unittest
+from unittest.mock import Mock, patch
 
 import cv2
 import numpy as np
@@ -133,6 +134,36 @@ class CameraServiceTests(unittest.TestCase):
 
 
 class RecognitionTests(unittest.TestCase):
+    def test_default_lbph_threshold_and_explicit_override(self):
+        predictor = Mock()
+        face = SimpleNamespace(LBPHFaceRecognizer_create=lambda: predictor)
+        with TemporaryDirectory() as directory, patch.object(cv2, 'face', face, create=True):
+            model = Path(directory) / 'model.yml'
+            labels = Path(directory) / 'labels.txt'
+            model.touch()
+            labels.write_text('Synthetic identity\n', encoding='utf-8')
+            crop = FakeCamera(None).image[:, :, 0]
+            default = load_recognizer(model, labels)
+            predictor.predict.return_value = (0, 69.9)
+            self.assertEqual(default(crop), ('Synthetic identity', 69.9))
+            self.assertEqual(load_recognizer(model, labels, 60)(crop), ('Unknown', 69.9))
+            predictor.predict.return_value = (0, 70.0)
+            self.assertEqual(default(crop), ('Unknown', 70.0))
+
+    def test_dashboard_uses_shared_threshold_and_honors_override(self):
+        from web.__main__ import main
+
+        for options, expected in (([], 70), (['--face-threshold', '61'], 61)):
+            with self.subTest(options=options):
+                camera, _, _ = mock_service()
+                with (patch('perception.service.CameraService', return_value=camera),
+                      patch('intelligence.recognize.load_recognizer') as loader,
+                      patch('flask.Flask.run'),
+                      patch.dict('os.environ', {'ELI_WEB_PASSWORD': 'synthetic test password'}, clear=True)):
+                    self.assertEqual(main(['--unified', '--local-camera', *options]), 0)
+                    camera.recognizer()
+                loader.assert_called_once_with('data/trained_model.yml', 'data/labels.txt', expected)
+
     def test_confirm_unknown_and_clear_after_missing_or_multiple_faces(self):
         detector = Detector()
         results = iter([('Test A', 21.)]*3 + [('Test A', 21.), ('Unknown', 70.)])

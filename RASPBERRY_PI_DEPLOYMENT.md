@@ -20,8 +20,14 @@ Preliminary checks on the target Pi passed with the motor battery disconnected:
   `driver_ready: true`, and no reported errors.
 - The USB webcam was detected.
 
-These results cover device detection and a direct serial status exchange.
-Unified runtime hardware acceptance and systemd startup remain pending.
+The project owner subsequently confirmed the integrated Pi 4 prototype with
+physical TFT eyes, camera, face recognition, voice interaction, laptop Ollama,
+ESP32 motor control, and private smartphone access through Tailscale HTTPS.
+An initial `Malformed ESP32 response` cleared after a temporary three-second
+wait and input-buffer flush after opening the serial port. The permanent
+implementation makes the wait cancellable and flushes before negotiation.
+Recheck it on the Pi with motor power disconnected before resuming drive.
+Systemd startup remains a separate, optional check.
 
 ## 1. Inventory the existing installation
 
@@ -42,10 +48,11 @@ supported interpreter. Set `ELI_PI_PYTHON` to that venv's absolute Python path
 before using the launcher. Keep the existing private LBPH model, matching
 labels, configuration, backups, and local Python environment.
 
-## 2. Sync after Phase 8 is available on origin/main
+## 2. Sync after the stabilization commit is available on origin/main
 
 Only fast-forward the existing checkout when it is clean, on main, and its
 local files are backed up. A changed tracked labels file counts as local work.
+So does the temporary serial initialization fix.
 
 ```sh
 cd /home/beshakhadeb/eli_robot
@@ -61,8 +68,8 @@ and use a second checkout. Choose a new directory. The existing venv and
 private assets can be referenced by absolute path without copying them.
 
 ```sh
-git worktree add --detach "$HOME/eli_robot-phase8" origin/main
-cd "$HOME/eli_robot-phase8"
+git worktree add --detach "$HOME/eli_robot-phase8-stabilization" origin/main
+cd "$HOME/eli_robot-phase8-stabilization"
 export ELI_PI_PYTHON=/home/beshakhadeb/eli_robot/.venv/bin/python
 ```
 
@@ -70,6 +77,9 @@ If using the second checkout, use that directory for the remaining commands.
 Configure `ELI_FACE_MODEL` and `ELI_FACE_LABELS` in the external environment
 file to reference the original, matching pair. Never put the private copy of
 a label file into a tracked path with different contents.
+Keep the existing `~/.config/eli/pi.env` in place. Set
+`ELI_FACE_THRESHOLD=70` there only if the file currently overrides the
+threshold and you want the new default.
 
 ## 3. Check dependencies and hardware access
 
@@ -306,5 +316,7 @@ ELI_DISPLAY_BACKEND=tft /home/beshakhadeb/eli_robot/.venv/bin/python -m web --un
 
 Restore only verified dependency changes if necessary, using the saved freeze
 as a reference. Do not remove the original venv or private data. Pi hardware
-acceptance, sustained performance, secure phone access, and boot-time service
-behavior remain to be verified locally.
+acceptance of the permanent serial patch, sustained CPU and thermal
+performance, physical stopping distances and watchdog timing, false-positive
+rates at the new LBPH threshold, and boot-time systemd behavior remain to be
+measured or verified locally.

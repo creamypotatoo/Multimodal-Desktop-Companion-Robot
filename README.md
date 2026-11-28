@@ -46,10 +46,13 @@ Launch with `--local-camera` and start capture from Perception.
 Phase 7 passed Windows manual verification for discovery and live preview,
 face detection, registered identity recognition and expiration, animated gaze,
 wake and identity-aware conversation with capture active, and repeated start
-and stop. Raspberry Pi camera and TFT operation still require verification.
+and stop.
 
 ## Raspberry Pi deployment
 
 Use the [Raspberry Pi deployment guide](RASPBERRY_PI_DEPLOYMENT.md) for
 non-destructive synchronization, staged hardware checks, private HTTPS
 dashboard access, and optional systemd startup after manual acceptance.
+The project owner confirmed integrated Pi 4 operation with TFT eyes, camera,
+face recognition, voice, Ollama, ESP32 motor control, and private smartphone
+access over Tailscale HTTPS.

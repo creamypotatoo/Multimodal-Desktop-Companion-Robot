@@ -30,6 +30,7 @@ data/models/
 
 # Environment/secrets
 .env
+/deploy/pi.env
 # Private face-recognition data
 data/trained_model.yml
 /data/labels.txt.bak

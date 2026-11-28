@@ -20,7 +20,7 @@ def main(argv=None, *, shutdown_timeout=0):
     parser.add_argument('--unified', action='store_true', help='enable the unified conversation runtime')
     parser.add_argument('--local-io', action='store_true', help='use local audio, AI and configured eyes')
     parser.add_argument('--local-camera', action='store_true', help='enable explicit camera controls in Perception')
-    parser.add_argument('--face-threshold', type=float, default=50.0, help='maximum LBPH distance (exclusive)')
+    parser.add_argument('--face-threshold', type=float, help='maximum LBPH distance (exclusive, default: 70)')
     parser.add_argument('--face-model', default='data/trained_model.yml')
     parser.add_argument('--face-labels', default='data/labels.txt')
     parser.add_argument('--expression-model', help='optional local FER+ ONNX model')
@@ -66,11 +66,12 @@ def main(argv=None, *, shutdown_timeout=0):
             if components.camera is not None:
                 from functools import partial
                 from math import isfinite
-                from intelligence.recognize import load_recognizer
-                if not isfinite(args.face_threshold) or args.face_threshold <= 0:
+                from intelligence.recognize import CONFIDENCE_THRESHOLD, load_recognizer
+                threshold = CONFIDENCE_THRESHOLD if args.face_threshold is None else args.face_threshold
+                if not isfinite(threshold) or threshold <= 0:
                     raise ValueError('Face threshold must be positive and finite')
                 components.camera.recognizer = partial(load_recognizer, args.face_model,
-                                                       args.face_labels, args.face_threshold)
+                                                       args.face_labels, threshold)
                 if args.expression_model:
                     from intelligence.emotion import load_classifier
                     components.camera.classifier = partial(load_classifier, args.expression_model)

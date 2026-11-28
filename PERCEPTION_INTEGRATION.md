@@ -38,8 +38,9 @@ the existing `data/trained_model.yml` and matching `data/labels.txt` with one
 label per line in training ID order. Set `--face-model` and `--face-labels` to
 use another local pair. No assets are downloaded. Missing, incompatible or
 unreadable files leave detection and preview available. The default
-`--face-threshold 50` is an exclusive maximum LBPH distance. Lower values are
-stricter. Distance is a raw comparison score and carries no probability
+`--face-threshold 70` is an exclusive maximum LBPH distance. A higher
+threshold tolerates more variation and may increase false-positive matches.
+Distance is a raw comparison score and carries no probability
 interpretation. Faces smaller than 80 pixels on either side are detected but
 do not receive an LBPH prediction.
 
@@ -134,9 +135,11 @@ with a local path outside the repository.
 
 ### Remaining limitations
 
-Raspberry Pi camera and TFT operation still need hardware verification.
-Optional FER+ expression classification remains experimental and was outside
-the eight Windows checks. Driver open and read calls can block. The dashboard
+The project owner confirmed camera, face recognition and TFT operation in the
+integrated Raspberry Pi 4 prototype. Recognition error rates at the new
+default threshold have not been measured. Optional FER+ expression
+classification remains experimental and was outside the Windows checks.
+Driver open and read calls can block. The dashboard
 clears stale output while waiting for the driver to return. The camera
 pipeline detects faces and can recognize enrolled identities. It has no
 general visual scene understanding.

@@ -3,6 +3,7 @@ from collections import deque
 from copy import deepcopy
 from dataclasses import dataclass
 import json
+from math import isfinite
 import os
 from pathlib import Path
 import re
@@ -14,6 +15,7 @@ from .errors import AdapterError, LIVE, UNAVAILABLE
 HEARTBEAT = 0.2
 STATUS_PERIOD = 0.25
 ACK_TIMEOUT = 0.15
+SERIAL_STARTUP_SECONDS = 3.0
 MAX_PULSE_MS = 1000
 DIRECTIONS = {'forward', 'backward', 'left', 'right'}
 STATES = {'stopped', 'moving', 'reversing', 'estopped', 'fault'}
@@ -35,10 +37,17 @@ def open_serial(port, baud):
 
     link = serial.Serial(baudrate=baud, timeout=0.02, write_timeout=0.05,
                          exclusive=True if os.name == 'posix' else None)
-    link.dtr = False
-    link.rts = False
-    link.port = port
-    link.open()
+    try:
+        link.dtr = False
+        link.rts = False
+        link.port = port
+        link.open()
+    except Exception:
+        try:
+            link.close()
+        except OSError:
+            pass
+        raise
     return link
 
 
@@ -74,12 +83,15 @@ class Request:
 
 class ESP32MotorAdapter:
     def __init__(self, port=None, baud=115200, *, opener=open_serial, discover=discover_ports,
-                 clock=monotonic):
+                 clock=monotonic, startup_seconds=SERIAL_STARTUP_SECONDS):
         if port is not None and not validate_port(port):
             raise ValueError('Select a COM port or an absolute /dev serial device')
         if type(baud) is not int or not 1200 <= baud <= 1000000:
             raise ValueError('Invalid serial baud rate')
+        if not isfinite(startup_seconds) or not 0 <= startup_seconds <= SERIAL_STARTUP_SECONDS:
+            raise ValueError('Invalid serial startup interval')
         self._opener, self._discover, self._clock = opener, discover, clock
+        self._startup_seconds = startup_seconds
         self._condition = Condition()
         self._thread = None
         self._closing = False
@@ -278,19 +290,7 @@ class ESP32MotorAdapter:
     def _handle(self, request):
         command = request.command
         if command == 'connect':
-            if not self._current_revision(request):
-                return
-            self._serial = self._opener(**request.fields)
-            try:
-                self._negotiate(boot=True)
-                self._poll_status()
-            except LinkError:
-                if not self._current_revision(request):
-                    return
-                raise
-            with self._condition:
-                if self._current_revision(request):
-                    self._state = 'connected'
+            self._connect(request)
             return
         if not self._serial:
             if command == 'disconnect':
@@ -345,15 +345,54 @@ class ESP32MotorAdapter:
     def _save_ack(self, command, ack):
         self._last_ack = dict(command=command, id=ack['id'], state=ack['state'])
 
-    def _negotiate(self, *, boot=False):
+    def _connect(self, request):
+        if not self._current_revision(request):
+            return
+        connected = False
+        try:
+            self._serial = self._opener(**request.fields)
+            # Opening USB serial can reset the board and leave startup bytes queued.
+            with self._condition:
+                cancelled = self._condition.wait_for(lambda: not self._current_revision(request),
+                                                     timeout=self._startup_seconds)
+            if cancelled:
+                return
+            self._serial.reset_input_buffer()
+            self._rx.clear()
+            self._frames.clear()
+            if not self._negotiate(boot_request=request) or not self._current_revision(request):
+                return
+            self._poll_status()
+            with self._condition:
+                if self._current_revision(request):
+                    self._state = 'connected'
+                    connected = True
+        except (LinkError, OSError):
+            if self._current_revision(request):
+                raise
+        finally:
+            if self._serial and not connected and not self._current_revision(request):
+                with self._condition:
+                    emergency = self._shutdown_estop or self._pending('estop')
+                try:
+                    self._best_effort_stop('estop' if emergency else 'stop')
+                finally:
+                    self._close()
+                    with self._condition:
+                        self._status = self._heartbeat_at = None
+
+    def _negotiate(self, *, boot_request=None):
+        boot = boot_request is not None
         deadline = self._clock() + (2.5 if boot else ACK_TIMEOUT)
         while True:
+            if boot and not self._current_revision(boot_request):
+                return False
             try:
                 hello = self._exchange('hello', boot=boot)
                 break
             except TimeoutError:
                 with self._condition:
-                    if not boot or self._clock() >= deadline or self._closing or self._state != 'connecting':
+                    if not boot or self._clock() >= deadline:
                         raise LinkError('ESP32 handshake timed out') from None
         token = hello.get('session')
         if (type(hello.get('protocol_version')) is not int or hello['protocol_version'] != 1
@@ -362,7 +401,10 @@ class ESP32MotorAdapter:
             raise LinkError('Incompatible ESP32 handshake')
         self._session = token
         self._firmware_version = hello['firmware_version']
+        if boot and not self._current_revision(boot_request):
+            return False
         self._heartbeat()
+        return True
 
     def _heartbeat(self):
         started = self._clock()
@@ -417,8 +459,6 @@ class ESP32MotorAdapter:
             line = self._frames.popleft().strip()
             if len(line) > 512:
                 raise LinkError('Oversized ESP32 response')
-            if boot and not line.startswith(b'{'):
-                continue
             try:
                 frame = json.loads(line, object_pairs_hook=_unique_fields)
                 if (not isinstance(frame, dict) or type(frame.get('id')) is not int

@@ -1,11 +1,13 @@
 """Serial protocol regression tests. No COM or /dev device is opened."""
 import json
+from types import SimpleNamespace
 from threading import Event
 from time import monotonic
 from unittest import TestCase
+from unittest.mock import Mock, patch
 
 from controller import Action, Authority, Command, RobotController, Source
-from controller.esp32 import ESP32MotorAdapter
+from controller.esp32 import ESP32MotorAdapter, SERIAL_STARTUP_SECONDS, open_serial
 from test_web import FakeClock, PASSWORD, make_config
 
 OPERATOR = Authority('a', can_move=True, can_wake=True)
@@ -133,12 +135,16 @@ class Transport:
     def close(self):
         self.closed = True
 
+    def reset_input_buffer(self):
+        self.output = self.delayed = b''
+
 
 class SerialTests(TestCase):
     def setUp(self):
         self.firmware = Firmware()
         self.opened = []
         self.adapter = ESP32MotorAdapter('COM9', opener=self.open,
+                                         startup_seconds=0,
                                          discover=lambda: [dict(port='COM9', description='CP210x')])
         self.adapter.startup()
         self.addCleanup(self.adapter.shutdown)
@@ -236,6 +242,97 @@ class SerialTests(TestCase):
         self.wait(lambda: self.adapter.snapshot()['connection'] == 'fault')
         self.assertIn('firmware reset', self.adapter.snapshot()['error'])
         self.assertNotIn('move', [item['cmd'] for item in self.firmware.commands])
+
+
+class SerialStartupTests(TestCase):
+    wait = SerialTests.wait
+    ack = SerialTests.ack
+
+    def setUp(self):
+        self.firmware = Firmware()
+        self.opened = Event()
+        self.transports = []
+        self.fail_flush = False
+
+    def start(self, seconds=SERIAL_STARTUP_SECONDS):
+        self.adapter = ESP32MotorAdapter('COM9', opener=self.open, startup_seconds=seconds)
+        self.addCleanup(self.adapter.shutdown)
+        self.adapter.startup()
+        self.adapter.connect('COM9')
+        self.assertTrue(self.opened.wait(1))
+
+    def open(self, port, baud):
+        transport = Transport(self.firmware)
+        transport.output = b'ESP32 startup\n{"incomplete":'
+        transport.opened_at = monotonic()
+        reset_input_buffer = transport.reset_input_buffer
+
+        def flush():
+            transport.flushed_at = monotonic()
+            if self.fail_flush:
+                raise OSError('startup buffer reset failed')
+            reset_input_buffer()
+
+        transport.reset_input_buffer = flush
+        self.transports.append(transport)
+        self.opened.set()
+        return transport
+
+    def test_wait_then_flush_stale_startup_data_before_strict_negotiation(self):
+        self.start(.04)
+        self.wait(lambda: self.adapter.snapshot()['connection'] == 'connected')
+        transport = self.transports[0]
+        self.assertGreaterEqual(transport.flushed_at - transport.opened_at, .039)
+        self.assertEqual([item['cmd'] for item in self.firmware.commands], ['hello', 'heartbeat', 'status'])
+
+    def test_disconnect_cancels_initialization(self):
+        self.start()
+        self.adapter.disconnect()
+        self.wait(lambda: self.adapter.snapshot()['connection'] == 'disconnected')
+        self.assertTrue(self.transports[0].closed)
+        self.assertFalse(hasattr(self.transports[0], 'flushed_at'))
+        self.assertEqual([item['cmd'] for item in self.firmware.commands], ['stop'])
+
+    def test_shutdown_cancels_initialization_and_honors_pending_estop(self):
+        self.start()
+        self.adapter.emergency_stop()
+        self.adapter.shutdown()
+        self.assertFalse(self.adapter._thread.is_alive())
+        self.assertTrue(self.transports[0].closed)
+        self.assertTrue(self.firmware.estop)
+        self.assertEqual([item['cmd'] for item in self.firmware.commands], ['estop'])
+
+    def test_buffer_reset_failure_closes_port_and_reconnects_without_replay(self):
+        self.start(.04)
+        self.wait(lambda: self.adapter.snapshot()['connection'] == 'connected')
+        self.adapter.move('left', 50, 250)
+        self.ack('move')
+        self.adapter.disconnect()
+        self.wait(lambda: self.adapter.snapshot()['connection'] == 'disconnected')
+        self.fail_flush = True
+        self.adapter.connect('COM9')
+        self.wait(lambda: self.transports[-1].closed and self.adapter.snapshot()['connection'] == 'fault')
+        self.assertIn('buffer reset failed', self.adapter.snapshot()['error'])
+        self.fail_flush = False
+        self.adapter.connect('COM9')
+        self.wait(lambda: self.adapter.snapshot()['connection'] == 'connected')
+        self.assertEqual([item['cmd'] for item in self.firmware.commands].count('move'), 1)
+        self.assertEqual(self.firmware.speed, 0)
+
+    def test_malformed_response_after_flush_is_rejected(self):
+        self.firmware.fail_next = 'malformed'
+        self.start(.01)
+        self.wait(lambda: self.transports[0].closed and self.adapter.snapshot()['connection'] == 'fault')
+        self.assertIn('Malformed', self.adapter.snapshot()['error'])
+
+    def test_failed_open_closes_partially_initialized_handle(self):
+        link = Mock()
+        link.open.side_effect = OSError('open failed')
+        fake_serial = SimpleNamespace(Serial=Mock(return_value=link))
+        with patch.dict('sys.modules', {'serial': fake_serial}):
+            with self.assertRaisesRegex(OSError, 'open failed'):
+                open_serial('COM9', 115200)
+        link.close.assert_called_once()
 
 
 class ControllerSerialTests(TestCase):
