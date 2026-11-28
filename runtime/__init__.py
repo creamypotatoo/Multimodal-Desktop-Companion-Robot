@@ -44,6 +44,12 @@ class Components:
     ai_simulated: bool | None = None
     audio_info: object = None
     camera: object = None
+    optional_eyes: bool = False
+    camera_problem: str | None = None
+    input_problem: str | None = None
+    stt_problem: str | None = None
+    output_problem: str | None = None
+    cancellable_stt: bool = False
 
 
 class RuntimePorts(MockAdapter):
@@ -103,6 +109,10 @@ class UnifiedRuntime:
         self._health('audio', 'Simulated audio' if components.simulated else 'Local audio, on demand',
                      SIMULATED if components.simulated else UNAVAILABLE)
         self._health('conversation', 'Ready on request')
+        for subsystem, problem in (('camera', components.camera_problem), ('microphone', components.input_problem),
+                                   ('stt', components.stt_problem), ('audio', components.output_problem)):
+            if problem:
+                self._health(subsystem, problem, UNAVAILABLE)
 
     @property
     def mock_ai(self):
@@ -227,6 +237,8 @@ class UnifiedRuntime:
 
     def test_speaker(self):
         with self._audio_lock:
+            if self.components.output_problem:
+                raise ConflictError(self.components.output_problem)
             if self._audio_fault or self._stop.is_set() or not self._active or not self.controller.can_announce():
                 raise ConflictError('Speaker test requires an idle runtime in Standby or Companion')
             if not self.controller.get_volume()['volume']:
@@ -259,13 +271,7 @@ class UnifiedRuntime:
             self._owns_resources = True
             self._stop.clear()
             try:
-                self._eyes = self.components.eyes()
-                if self._eyes is not None and not getattr(self._eyes, 'running', False):
-                    self._eyes.start()
-                self._health('eyes', 'EyeEngine connected' if self._eyes else 'Eye display disabled',
-                             (getattr(self._eyes, 'availability', None) or
-                              (SIMULATED if self.components.simulated else LIVE))
-                             if self._eyes else UNAVAILABLE)
+                self._start_eyes()
                 if not self.controller.startup():
                     raise RuntimeError('Controller already started')
                 self.controller.events.subscribe(SUBSCRIBER)
@@ -285,6 +291,24 @@ class UnifiedRuntime:
                 self._finish_shutdown()
                 self._schedule_cleanup()
                 raise
+
+    def _start_eyes(self):
+        try:
+            self._eyes = self.components.eyes()
+            if self._eyes is not None and not getattr(self._eyes, 'running', False):
+                self._eyes.start()
+        except (ImportError, OSError, RuntimeError) as exc:
+            if not self.components.optional_eyes:
+                raise
+            if self._eyes is not None:
+                self._eyes.stop()
+                self._eyes = None
+            self._health('eyes', f'TFT unavailable: {exc}', UNAVAILABLE)
+            return
+        self._health('eyes', 'EyeEngine connected' if self._eyes else 'Eye display disabled',
+                     (getattr(self._eyes, 'availability', None) or
+                      (SIMULATED if self.components.simulated else LIVE))
+                     if self._eyes else UNAVAILABLE)
 
     def shutdown(self):
         with self._lifecycle:
@@ -314,9 +338,14 @@ class UnifiedRuntime:
                                           name='eli-runtime-cleanup', daemon=True)
             self._cleanup_worker.start()
 
+    def wait_for_shutdown(self, timeout):
+        worker = self._cleanup_worker
+        if worker is not None:
+            worker.join(timeout=timeout)
+        return not self._owns_resources
+
     def _finish_shutdown(self):
-        if self.camera is not None and not self.camera.shutdown():
-            return
+        camera_closed = self.camera is None or self.camera.shutdown()
         for worker in self._workers:
             worker.join(timeout=0.5)
         self._workers = [worker for worker in self._workers if worker.is_alive()]
@@ -331,6 +360,8 @@ class UnifiedRuntime:
             if self._eyes is not None:
                 return
         self._eye_cleanup = None
+        if not camera_closed:
+            return
         if self._audio_fault and self._audio_fault.process.poll() is None:
             return
         if self._owns_resources:
@@ -413,7 +444,8 @@ class UnifiedRuntime:
         detail = None
         text = ''
         try:
-            text = self.components.transcribe(recording, timeout=timeout)
+            options = {'current': current} if self.components.cancellable_stt else {}
+            text = self.components.transcribe(recording, timeout=timeout, **options)
             if not isinstance(text, str):
                 raise TypeError('Expected transcript text')
         except Exception as exc:
@@ -449,6 +481,8 @@ class UnifiedRuntime:
         return response
 
     def _speak(self, text, current, on_start=None):
+        if self.components.output_problem:
+            return
         with self._audio_lock:
             epoch = self._speech_epoch
         mode_context = self.controller.wake_context()
@@ -473,7 +507,9 @@ class UnifiedRuntime:
             self._health('audio', 'Playback exit unconfirmed; audio disabled', UNAVAILABLE)
             raise RuntimeError('Playback exit could not be confirmed') from None
         except Exception:
-            self._health('audio', 'Speech output failed', UNAVAILABLE)
+            detail = ('Speech output failed. Check the named ALSA device and run the standalone speaker test'
+                      if self.components.audio_backend == 'pi' else 'Speech output failed')
+            self._health('audio', detail, UNAVAILABLE)
             raise RuntimeError('Speech output failed') from None
         finally:
             if volume and on_start is None:
@@ -551,6 +587,9 @@ class UnifiedRuntime:
         return session
 
     def _listen_for_wake(self):
+        if self.components.input_problem or self.components.stt_problem:
+            self._health('wake', 'Microphone or whisper.cpp unavailable', UNAVAILABLE)
+            return
         context = self.controller.wake_context()
         mode = context[0]
         with self._audio_lock:
@@ -605,6 +644,10 @@ class UnifiedRuntime:
                 except KeyError:
                     return
             current_generation = self.controller.interaction()
+            if current_generation is not None and (self.components.input_problem or self.components.stt_problem):
+                self._health('conversation', self.components.input_problem or self.components.stt_problem, UNAVAILABLE)
+                self.controller.publish_behavior(current_generation, State.IDLE, finished=True)
+                current_generation = None
             if self._audio_fault:
                 if current_generation is not None:
                     self.controller.publish_behavior(current_generation, State.IDLE, finished=True)

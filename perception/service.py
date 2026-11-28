@@ -106,7 +106,10 @@ class FaceAnalysis:
 class CameraService:
     def __init__(self, config=None, *, factory=Camera, detector=load_face_cascade,
                  recognizer=load_recognizer, classifier=None, discover=camera_devices,
-                 simulated=False, clock=monotonic):
+                 simulated=False, clock=monotonic, preview_fps=MAX_PREVIEW_FPS, analysis_fps=MAX_PREVIEW_FPS):
+        if any(type(rate) is not int or not 1 <= rate <= MAX_PREVIEW_FPS
+               for rate in (preview_fps, analysis_fps)):
+            raise ValueError('Camera preview and analysis rates must be integers from 1 to 8')
         backend = cv2.CAP_DSHOW if platform.system() == 'Windows' else None
         self.config = config or CameraConfig(fps=15, backend=backend)
         self.factory, self.detector, self.recognizer = factory, detector, recognizer
@@ -124,6 +127,9 @@ class CameraService:
         self._detection = False
         self._devices = []
         self._device_error = None
+        self.preview_fps = preview_fps
+        self.analysis_fps = analysis_fps
+        self._performance = {}
 
     def discover(self):
         with self._lock:
@@ -176,6 +182,7 @@ class CameraService:
             self.config = replace(self.config, **settings)
             self._stop.clear()
             self._sample = self._settings = None
+            self._performance = {}
             self._recognition = self._detection = False
             self._state, self._detail = 'starting', 'Opening camera'
             self._thread = Thread(target=self._capture, name='eli-camera', daemon=True)
@@ -211,7 +218,9 @@ class CameraService:
                           available=True, simulated=self.simulated, preview=sample is not None,
                           requested=dict(device=str(self.config.resolved()[0]), width=self.config.width,
                                          height=self.config.height, fps=self.config.fps),
-                          preview_fps=min(self.config.fps, MAX_PREVIEW_FPS))
+                          preview_fps=min(self.config.fps, self.preview_fps),
+                          analysis_fps=min(self.config.fps, self.preview_fps, self.analysis_fps),
+                          performance=dict(self._performance) if sample else {})
             return dict(camera=camera, recognition=dict(available=self._recognition and self._state == 'active',
                                                          detection=self._detection and self._state == 'active',
                                                          **state))
@@ -251,27 +260,22 @@ class CameraService:
                 self._settings = dict(camera.settings or {})
                 self._detection, self._recognition = detector is not None, recognize is not None and detector is not None
                 self._state, self._detail = 'active', 'Camera active'
-            period = 1 / min(self.config.fps, MAX_PREVIEW_FPS)
+            period = 1 / min(self.config.fps, self.preview_fps)
+            analysis_period = max(period, 1 / self.analysis_fps)
+            next_analysis = 0
+            state = empty_perception()
+            last_frame = measured_fps = analysis_ms = None
             while not self._stop.is_set():
                 started = self.clock()
                 ok, image = camera.read()
                 if not ok or image is None or not image.size:
                     raise RuntimeError('Camera disconnected or frame read failed')
                 image = image.copy()
-                try:
-                    state = analysis.analyze(image, started)
-                except cv2.error:
-                    # A corrupt/incompatible recognizer must not break video.
-                    analysis = FaceAnalysis(detector)
-                    with self._lock:
-                        self._recognition = False
-                    try:
-                        state = analysis.analyze(image, started)
-                    except cv2.error:
-                        analysis = FaceAnalysis(None)
-                        with self._lock:
-                            self._detection = False
-                        state = analysis.analyze(image, started)
+                if analysis_period == period or started >= next_analysis:
+                    next_analysis = started + analysis_period - 0.001
+                    analysis_started = self.clock()
+                    state, analysis = self._analyze(analysis, detector, image, started)
+                    analysis_ms = round((self.clock() - analysis_started) * 1000, 1)
                 for face in state['faces']:
                     x, y, w, h = face['box']
                     cv2.rectangle(image, (x, y), (x+w, y+h), (0, 220, 100), 2)
@@ -283,10 +287,18 @@ class CameraService:
                 ok, encoded = cv2.imencode('.jpg', image, [cv2.IMWRITE_JPEG_QUALITY, 75])
                 if not ok:
                     raise RuntimeError('Camera preview encoding failed')
+                finished = self.clock()
+                if last_frame is not None and finished > last_frame:
+                    fps = 1 / (finished - last_frame)
+                    measured_fps = fps if measured_fps is None else .2 * fps + .8 * measured_fps
+                last_frame = finished
                 with self._lock:
                     if self._stop.is_set():
                         return
                     self._sample = (started, state, encoded.tobytes())
+                    self._performance = dict(fps=round(measured_fps, 1) if measured_fps is not None else None,
+                                             analysis_ms=analysis_ms,
+                                             frame_ms=round((finished - started) * 1000, 1))
                 self._stop.wait(max(0, period - (self.clock() - started)))
         except Exception as exc:
             detail = str(exc) if isinstance(exc, RuntimeError) else 'Camera capture failed'
@@ -299,3 +311,19 @@ class CameraService:
                     self._sample = self._settings = None
                     stopped = self._stop.is_set()
                     self._state, self._detail = ('off', 'Camera is off') if stopped else ('error', detail)
+
+    def _analyze(self, analysis, detector, image, started):
+        try:
+            return analysis.analyze(image, started), analysis
+        except cv2.error:
+            # Disable a corrupt recognizer while keeping detection and video.
+            analysis = FaceAnalysis(detector)
+            with self._lock:
+                self._recognition = False
+            try:
+                return analysis.analyze(image, started), analysis
+            except cv2.error:
+                analysis = FaceAnalysis(None)
+                with self._lock:
+                    self._detection = False
+                return analysis.analyze(image, started), analysis

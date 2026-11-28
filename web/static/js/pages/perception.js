@@ -72,6 +72,13 @@ function render({ camera, recognition }) {
   previewFps = camera.preview_fps ?? 8;
   setText('[data-camera-format]', settings
     ? `${settings.frame_width} × ${settings.frame_height} · ${settings.fps || 'Unknown'} FPS reported by driver · Preview up to ${previewFps} FPS` : '');
+  const performance = camera.performance ?? {};
+  const metrics = [
+    performance.fps == null ? '' : `${performance.fps} FPS measured`,
+    performance.analysis_ms == null ? '' : `${performance.analysis_ms} ms face processing`,
+    performance.frame_ms == null ? '' : `${performance.frame_ms} ms capture to JPEG`,
+  ];
+  setText('[data-camera-performance]', metrics.filter(Boolean).join(' · '));
   if (!camera.preview || document.hidden) pausePreview();
   else if (!shown) {
     shown = true;

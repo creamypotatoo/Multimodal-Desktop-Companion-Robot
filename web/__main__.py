@@ -13,7 +13,7 @@ from web import create_app
 from web.config import ConfigError, WebConfig
 
 
-def main(argv=None):
+def main(argv=None, *, shutdown_timeout=0):
     parser = argparse.ArgumentParser(description='Eli web dashboard')
     parser.add_argument('--host', help='bind address (overrides ELI_WEB_HOST)')
     parser.add_argument('--port', type=int, help='port (overrides ELI_WEB_PORT)')
@@ -63,7 +63,7 @@ def main(argv=None):
             ai_backend = args.ai or ('ollama' if args.local_io else 'mock')
             components = configured_components(audio_backend, ai_backend,
                                                configured_eyes=args.local_io, camera=args.local_camera)
-            if args.local_camera:
+            if components.camera is not None:
                 from functools import partial
                 from math import isfinite
                 from intelligence.recognize import load_recognizer
@@ -103,6 +103,8 @@ def main(argv=None):
         app.run(host=config.host, port=config.port, debug=False, threaded=True, use_reloader=False)
     finally:
         controller.shutdown()
+        if runtime is not None and shutdown_timeout and not runtime.wait_for_shutdown(shutdown_timeout):
+            print('[Runtime] Shutdown timed out waiting for a device or service call', file=sys.stderr, flush=True)
     return 0
 
 

@@ -164,8 +164,15 @@ def conversation():
 
 @bp.get('/perception')
 def perception():
+    unified = current_app.extensions.get('eli_runtime')
     camera = perception_camera()
-    return ok(camera.snapshot() if camera else robot().perception())
+    if camera is not None:
+        return ok(camera.snapshot())
+    state = robot().perception()
+    problem = getattr(getattr(unified, 'components', None), 'camera_problem', None)
+    if problem:
+        state['camera']['detail'] = problem
+    return ok(state)
 
 
 def perception_camera():

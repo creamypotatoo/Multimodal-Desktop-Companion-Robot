@@ -90,6 +90,9 @@ descriptions. Explicitly select Connect ESP32 in Standby.
 
 ## Raspberry Pi
 
+For staged hardware checks and the permanent launcher, see the
+[Raspberry Pi deployment guide](RASPBERRY_PI_DEPLOYMENT.md).
+
 Install `requirements-esp32.txt` in the existing Pi environment. Set up the
 existing whisper.cpp, TTS, Ollama, and display dependencies as needed. Replace
 `/dev/ttyUSB0` with the USB bridge's enumerated device or use its stable

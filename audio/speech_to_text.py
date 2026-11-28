@@ -32,6 +32,7 @@ import wave
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
+from time import monotonic
 
 import numpy as np
 try:
@@ -243,24 +244,58 @@ def record_audio(filename="temp_audio.wav", settings=None):
     return filename
 
 
+def whisper_paths(environ=None):
+    env = os.environ if environ is None else environ
+    return (Path(env.get('ELI_WHISPER_CPP_CLI') or WHISPER_CLI).expanduser(),
+            Path(env.get('ELI_WHISPER_CPP_MODEL') or MODEL_PATH).expanduser())
+
+
+def whisper_problem(cli, model):
+    if not cli.is_file() or not os.access(cli, os.X_OK):
+        return 'whisper.cpp executable unavailable. Check ELI_WHISPER_CPP_CLI'
+    if not model.is_file() or not os.access(model, os.R_OK):
+        return 'whisper.cpp model unavailable. Check ELI_WHISPER_CPP_MODEL'
+    return None
+
+
+def _whisper_command(filename):
+    cli, model = whisper_paths()
+    problem = whisper_problem(cli, model)
+    if problem:
+        raise FileNotFoundError(problem)
+    return [str(cli), '-m', str(model), '-f', str(filename), '-l', 'en', '-t', '4', '-nt']
+
+
 def transcribe(filename="temp_audio.wav", timeout=None):
     """Run whisper.cpp; ``timeout`` (seconds) raises subprocess.TimeoutExpired."""
-    result = subprocess.run(
-        [
-            str(WHISPER_CLI),
-            "-m", str(MODEL_PATH),
-            "-f", str(filename),
-            "-l", "en",
-            "-t", "4",
-            "-nt",
-        ],
-        capture_output=True,
-        text=True,
-        check=True,
-        timeout=timeout,
-    )
-
+    result = subprocess.run(_whisper_command(filename), capture_output=True, text=True,
+                            check=True, timeout=timeout)
     return result.stdout.strip()
+
+
+def transcribe_cancellable(filename, *, timeout, current):
+    if not current():
+        return ''
+    command = _whisper_command(filename)
+    deadline = monotonic() + timeout
+    with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) as process:
+        try:
+            while current():
+                remaining = deadline - monotonic()
+                if remaining <= 0:
+                    raise subprocess.TimeoutExpired(command, timeout)
+                try:
+                    output, _ = process.communicate(timeout=min(0.15, remaining))
+                except subprocess.TimeoutExpired:
+                    continue
+                if process.returncode:
+                    raise subprocess.CalledProcessError(process.returncode, command)
+                return output.strip()
+            return ''
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.communicate()
 
 
 def show_levels(seconds=10.0):

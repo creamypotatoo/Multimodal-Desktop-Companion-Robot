@@ -47,3 +47,9 @@ Phase 7 passed Windows manual verification for discovery and live preview,
 face detection, registered identity recognition and expiration, animated gaze,
 wake and identity-aware conversation with capture active, and repeated start
 and stop. Raspberry Pi camera and TFT operation still require verification.
+
+## Raspberry Pi deployment
+
+Use the [Raspberry Pi deployment guide](RASPBERRY_PI_DEPLOYMENT.md) for
+non-destructive synchronization, staged hardware checks, private HTTPS
+dashboard access, and optional systemd startup after manual acceptance.

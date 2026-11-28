@@ -4,6 +4,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 import json
 import os
+from pathlib import Path
 import re
 from threading import Condition, Thread
 from time import monotonic
@@ -44,8 +45,16 @@ def open_serial(port, baud):
 def discover_ports():
     from serial.tools.list_ports import comports
 
-    return [dict(port=item.device, description=item.description)
-            for item in sorted(comports())]
+    ports = {item.device: item.description for item in sorted(comports())}
+    if os.name == 'posix':
+        aliases = {}
+        for directory in (Path('/dev/serial/by-id'), Path('/dev/serial/by-path')):
+            for link in sorted(directory.glob('*')):
+                target = os.path.realpath(link)
+                if validate_port(str(link)) and link.is_symlink() and link.exists():
+                    aliases[str(link)] = ports.get(target, Path(target).name)
+        ports = {**aliases, **ports}
+    return [dict(port=port, description=description) for port, description in ports.items()]
 
 
 def validate_port(port):

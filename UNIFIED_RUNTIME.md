@@ -21,24 +21,24 @@ through your speakers. `python -m web` still launches the standalone dashboard.
 
 The runtime injects exactly one controller into Flask. The controller owns
 operating mode, behavior snapshots, volume, servo and motor requests, and
-the existing productivity scheduler. Mock motors and simulated safety
-inputs remain in use even in local-I/O mode. Authentication, CSRF, and LAN
+the existing productivity scheduler. Mock motors are the default. The ESP32
+backend starts disconnected and requires an operator to connect. Authentication, CSRF, and LAN
 binding requirements are shared with the standalone dashboard.
 See [dashboard configuration](WEB_DASHBOARD.md).
 
-The conversation worker serializes optional camera sampling, recording/STT,
-AI, speech and utility announcements. An eye worker sends the controller's
-latest expression to one EyeEngine. The engine owns its display and animation
-thread. The profile sampler closes the camera before audio starts and never
-streams frames. The runtime acquires process-wide ownership on startup and
-releases it after workers and display stop. Use a single process and stop the
-legacy hardware application before launching local I/O.
+The conversation worker serializes recording, transcription, AI, speech and
+utility announcements. The shared camera has its own worker and capture starts
+only when explicitly requested. The conversation worker snapshots perception
+state at session start. An eye worker sends expressions and gaze to one
+EyeEngine. The runtime acquires process-wide ownership on startup and releases
+it after its workers and hardware resources stop. Stop the legacy hardware
+application before launching local I/O.
 
 | Mode | Unified behavior |
 |---|---|
 | Standby | Idle eyes, no conversation, dashboard and utilities available |
 | Companion | Start and end conversations from the dashboard |
-| Movement | Ends conversation and uses the controller's existing mock movement permissions, lease, timeout and safety rules |
+| Movement | Ends conversation and applies the controller's movement permissions, lease, timeout and safety rules |
 | Sleep | Ends conversation, stops motion, displays sleeping eyes, and keeps utilities available |
 
 ## Interaction and audio

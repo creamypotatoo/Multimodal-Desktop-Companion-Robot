@@ -1,0 +1,18 @@
+[Unit]
+Description=Eli unified dashboard and hardware runtime
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+WorkingDirectory=%h/eli_robot
+ExecStart=/bin/sh %h/eli_robot/deploy/launch-pi.sh run
+Restart=on-failure
+RestartSec=5
+RestartPreventExitStatus=2
+TimeoutStopSec=15
+KillMode=mixed
+UMask=0077
+
+[Install]
+WantedBy=default.target
